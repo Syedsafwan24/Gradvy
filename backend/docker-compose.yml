@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:alpine
+    container_name: gradvy-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - gradvy-network
+
+  celery-worker:
+    build: .
+    container_name: gradvy-celery-worker
+    command: celery -A core worker --loglevel=info --pool=solo
+    volumes:
+      - .:/app
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DB_ENGINE=django.db.backends.postgresql
+      - DB_NAME=gradvy_db
+      - DB_USER=gradvy_user
+      - DB_PASSWORD=gradvy_pass123
+      - DB_HOST=host.docker.internal
+      - DB_PORT=5432
+    depends_on:
+      - redis
+    networks:
+      - gradvy-network
+    restart: unless-stopped
+
+  celery-beat:
+    build: .
+    container_name: gradvy-celery-beat
+    command: celery -A core beat --loglevel=info
+    volumes:
+      - .:/app
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DB_ENGINE=django.db.backends.postgresql
+      - DB_NAME=gradvy_db
+      - DB_USER=gradvy_user
+      - DB_PASSWORD=gradvy_pass123
+      - DB_HOST=host.docker.internal
+      - DB_PORT=5432
+    depends_on:
+      - redis
+    networks:
+      - gradvy-network
+    restart: unless-stopped
+    restart: unless-stopped
+
+  flower:
+    build: .
+    container_name: gradvy-flower
+    command: celery -A core flower --port=5555
+    ports:
+      - '5555:5555'
+    volumes:
+      - .:/app
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    networks:
+      - gradvy-network
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+
+networks:
+  gradvy-network:
+    driver: bridge

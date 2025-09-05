@@ -1,0 +1,25 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{# Load the login-specific CSS #}
+{% block extrastyle %}
+    <link rel="stylesheet" type="text/css" href="{% static "admin/css/login.css" %}">
+    {{ block.super }}
+{% endblock %}
+
+{# Add 'login' class to the body for styling #}
+{% block bodyclass %}{{ block.super }} login{% endblock %}
+
+{# Remove user tools, nav, and breadcrumbs for the login page #}
+{% block usertools %}{% endblock %}
+{% block nav-global %}{% endblock %}
+{% block breadcrumbs %}{% endblock %}
+
+{# The content block will be filled by two_factor's templates #}
+{% block content %}
+    <div id="content-main">
+        {% block content_main %}
+            {{ block.super }}
+        {% endblock %}
+    </div>
+{% endblock %}
