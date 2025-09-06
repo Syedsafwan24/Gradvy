@@ -5,20 +5,17 @@ from .models import User, UserProfile
 class UserSerializer(serializers.ModelSerializer):
     profile = serializers.SerializerMethodField()
     groups = serializers.SerializerMethodField()
-    modules = serializers.SerializerMethodField()
     
     class Meta:
         model = User
-        fields = ['id', 'email', 'employee_id', 'first_name', 'last_name', 
+        fields = ['id', 'email', 'first_name', 'last_name', 
                  'is_active', 'is_staff', 'date_joined', 'last_login', 
-                 'mfa_enrolled', 'profile', 'groups', 'modules']
+                 'mfa_enrolled', 'profile', 'groups']
         read_only_fields = ['id', 'date_joined', 'last_login']
     
     def get_profile(self, obj):
         if hasattr(obj, 'profile'):
             return {
-                'department': obj.profile.department,
-                'position': obj.profile.position,
                 'phone_number': obj.profile.phone_number,
             }
         return {}
@@ -26,8 +23,6 @@ class UserSerializer(serializers.ModelSerializer):
     def get_groups(self, obj):
         return list(obj.groups.values_list('name', flat=True))
 
-    def get_modules(self, obj):
-        return list(obj.modules.values_list('name', flat=True))
 
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()

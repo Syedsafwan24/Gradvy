@@ -7,8 +7,7 @@ from two_factor.urls import urlpatterns as tf_urls
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include(tf_urls)),
-    path('api/auth/', include('modules.auth.accounts.urls')),
-    path('api/ess/', include('modules.ESS.ess.urls')),  # Main ESS app URLs
+    path('api/auth/', include('auth.urls')),
 ]
 
 if settings.DEBUG:

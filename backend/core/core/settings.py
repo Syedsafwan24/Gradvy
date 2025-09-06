@@ -7,9 +7,9 @@ import dj_database_url
 # Build paths
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Ensure we load environment variables from the Django project directory (core/.env)
-# Use python-decouple's AutoConfig so config('VAR') reads the .env file located at BASE_DIR
-config = AutoConfig(search_path=BASE_DIR)
+# Load environment variables from multiple locations
+# Priority: 1. Environment variables, 2. .env file in project root, 3. defaults
+config = AutoConfig(search_path=BASE_DIR.parent)  # Look in backend/ directory for .env
 
 # Security
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='your-secret-key-here')
@@ -40,16 +40,13 @@ INSTALLED_APPS = [
     # 'django_celery_beat',  # Commented out due to Django 5.1 compatibility issues
     
     # Local apps
-    'modules.auth.accounts.apps.AccountsConfig',
-    'modules.ESS.ess.apps.EssConfig',
+    'auth.apps.AuthConfig',
 ]
 
 # Celery Configuration
+# Hybrid Development Setup: Redis runs in Docker (localhost:6380), Celery runs locally
 # For production, use a robust broker like RabbitMQ or a dedicated Redis instance.
-# For local development, you can run Redis via Docker: docker run -p 6379:6379 --name my-redis-container -d redis
-# For production, use a robust broker like RabbitMQ or a dedicated Redis instance.
-# Celery broker/result backend URLs can be provided via env; default to local Redis for dev.
-CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6380/0')
 CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default=CELERY_BROKER_URL)
 
 CELERY_ACCEPT_CONTENT = ['json']
@@ -67,7 +64,7 @@ USED_BACKUP_CODE_RETENTION_DAYS = 90 # Used backup codes older than this will be
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
 # Custom user model
-AUTH_USER_MODEL = 'accounts.User'
+AUTH_USER_MODEL = 'gradvy_auth.User'
 
 # Middleware
 MIDDLEWARE = [
@@ -213,7 +210,8 @@ PASSWORD_HASHERS = [
 ]
 
 # Database
-# Prefer a single DATABASE_URL env var (12-factor). Fallback to individual DB_* vars or sqlite.
+# Hybrid Development Setup: PostgreSQL runs in Docker (localhost:5432), Django runs locally
+# Prefer a single DATABASE_URL env var (12-factor). Fallback to individual DB_* vars.
 DATABASE_URL = config('DATABASE_URL', default='')
 conn_max_age = config('CONN_MAX_AGE', default=600, cast=int)
 if DATABASE_URL:
@@ -221,13 +219,13 @@ if DATABASE_URL:
         'default': dj_database_url.parse(DATABASE_URL, conn_max_age=conn_max_age) # type: ignore
     }
 else:
-    # Require Postgres-style individual DB settings for local dev. No sqlite fallback.
+    # Individual DB settings for local development with Docker PostgreSQL
     DATABASES = {
         'default': {
             'ENGINE': config('DB_ENGINE', default='django.db.backends.postgresql'),
-            'NAME': config('DB_NAME', default='core_backend_db'),
-            'USER': config('DB_USER', default='db_user'),
-            'PASSWORD': config('DB_PASSWORD', default='db_password'),
+            'NAME': config('DB_NAME', default='gradvy_db'),
+            'USER': config('DB_USER', default='gradvy_user'),
+            'PASSWORD': config('DB_PASSWORD', default='gradvy_secure_2024'),
             'HOST': config('DB_HOST', default='localhost'),
             'PORT': config('DB_PORT', default='5432'),
         }
@@ -279,9 +277,9 @@ USE_TZ = True
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-MIGRATION_MODULES = {
-    'otp_totp': 'modules.auth.accounts.migrations_otp_totp',
-}
+# MIGRATION_MODULES = {
+#     'otp_totp': 'auth.migrations_otp_totp',
+# }
 
 
 import sys

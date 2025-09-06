@@ -12,7 +12,7 @@ from axes.decorators import axes_dispatch
 from axes.exceptions import AxesBackendPermissionDenied
 import logging
 from .serializers import *
-from .models import User, AuthAuditLog, UserTOTPDevice # UserTOTPDevice imported
+from .models import User  # Using standard TOTPDevice from django-otp
 from .utils import log_auth_event, generate_backup_codes
 import qrcode
 import base64
@@ -224,7 +224,7 @@ class MFAEnrollmentView(views.APIView):
         hex_secret = raw_secret_bytes.hex()
 
         # Create TOTP device - store the hex string
-        device = UserTOTPDevice.objects.create(
+        device = TOTPDevice.objects.create(
             user=user,
             key=hex_secret, # Store hex string
             confirmed=False
@@ -232,7 +232,7 @@ class MFAEnrollmentView(views.APIView):
 
         # Generate QR code
         qr = qrcode.QRCode(version=1, box_size=10, border=5)
-        qr.add_data(f"otpauth://totp/{user.email}?secret={base32_secret}&issuer=ESS")
+        qr.add_data(f"otpauth://totp/{user.email}?secret={base32_secret}&issuer=Gradvy")
         qr.make(fit=True)
 
         img = qr.make_image(fill_color="black", back_color="white")
@@ -259,7 +259,7 @@ class MFAEnrollmentView(views.APIView):
         code = serializer.validated_data['code']
 
         try:
-            device = UserTOTPDevice.objects.get(id=device_id, user=request.user)
+            device = TOTPDevice.objects.get(id=device_id, user=request.user)
         except TOTPDevice.DoesNotExist:
             return Response({'error': 'Device not found'}, 
                           status=status.HTTP_400_BAD_REQUEST)
@@ -282,15 +282,7 @@ class MFAEnrollmentView(views.APIView):
 
             request.user.mfa_enrolled = True
             request.user.save()
-            print(f"DEBUG: MFA Enroll Confirm - User: {request.user.email}")
-            print(f"DEBUG: Device ID: {device_id}")
-            print(f"DEBUG: Code received: {code}")
-            print(f"DEBUG: Device key: {device.key}")
-            print(f"DEBUG: Device digits: {device.digits}")
-            print(f"DEBUG: Device step: {device.step}")
-            print(f"DEBUG: Server time: {timezone.now()}")
-            is_valid = device.verify_token(code)
-            print(f"DEBUG: device.verify_token({code}) result: {is_valid}")
+            
             # Log MFA enrollment
             log_auth_event(request.user, 'mfa_enroll', request, success=True)
 

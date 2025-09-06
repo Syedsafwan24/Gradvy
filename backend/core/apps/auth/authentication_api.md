@@ -44,7 +44,6 @@ Authenticates a user with their email and password. If successful, it returns JW
     "user": {
         "id": 1,
         "email": "testuser@example.com",
-        "employee_id": "EMP123",
         "first_name": "Test",
         "last_name": "User",
         "is_active": true,
@@ -57,7 +56,7 @@ Authenticates a user with their email and password. If successful, it returns JW
             "phone_number": "123-456-7890"
         },
         "groups": [],
-        "modules": ["ESS"]
+        "groups": []
     }
 }
 ```

@@ -29,12 +29,13 @@ def clean_mfa_data():
     from django.conf import settings
     from django.utils import timezone
     from datetime import timedelta
-    from modules.auth.accounts.models import UserTOTPDevice, BackupCode
+    from django_otp.plugins.otp_totp.models import TOTPDevice
+    from auth.models import BackupCode
 
     # Clean up unconfirmed TOTP devices
     unconfirmed_totp_retention_hours = getattr(settings, 'UNCONFIRMED_TOTP_RETENTION_HOURS', 24)
     totp_cutoff_time = timezone.now() - timedelta(hours=unconfirmed_totp_retention_hours)
-    deleted_totp_count, _ = UserTOTPDevice.objects.filter(
+    deleted_totp_count, _ = TOTPDevice.objects.filter(
         confirmed=False,
         created_at__lt=totp_cutoff_time
     ).delete()
@@ -51,26 +52,3 @@ def clean_mfa_data():
 
     return f"MFA data cleanup complete. Deleted {deleted_totp_count} TOTP devices and {deleted_backup_count} backup codes."
 
-@shared_task
-def log_auth_event_task(user_id, event_type, ip_address, user_agent, device_info, success, details):
-    """
-    Celery task to log authentication events in the background.
-    """
-    from modules.auth.accounts.models import User, AuthAuditLog
-
-    try:
-        user = User.objects.get(id=user_id)
-    except User.DoesNotExist:
-        print(f"User with ID {user_id} not found for auth event logging.")
-        return
-
-    AuthAuditLog.objects.create(
-        user=user,
-        event_type=event_type,
-        ip_address=ip_address,
-        user_agent=user_agent,
-        device_info=device_info,
-        success=success,
-        details=details or {}
-    )
-    print(f"Auth event logged for user {user.email}: {event_type} (Success: {success})")
