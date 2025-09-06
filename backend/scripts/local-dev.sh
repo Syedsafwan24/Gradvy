@@ -23,6 +23,27 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+# Function to ask yes/no question with default yes
+ask_yes_no() {
+    local question="$1"
+    local response
+    while true; do
+        echo -ne "${YELLOW}[QUESTION]${NC} $question (Y/n): "
+        read -r response
+        # Default to yes if empty response
+        response=${response:-y}
+        case $response in
+            [Yy]* ) return 0;;
+            [Nn]* ) return 1;;
+            * ) echo "Please answer yes (y) or no (n). Press Enter for default (yes).";;
+        esac
+    done
+}
+
 # Navigate to backend directory  
 cd "$(dirname "$0")/.."
 
@@ -35,9 +56,33 @@ fi
 # Check if data services are running
 print_status "Checking data services..."
 if ! docker-compose ps | grep -q "Up"; then
-    print_error "Data services not running! Start them first:"
-    echo "   ./scripts/data-start.sh"
-    exit 1
+    print_warning "Data services (PostgreSQL + Redis) are not running!"
+    echo ""
+    echo "📋 Required services:"
+    echo "   • PostgreSQL database (localhost:5432)"
+    echo "   • Redis cache (localhost:6380)"
+    echo ""
+    
+    if ask_yes_no "Would you like to start the data services now?"; then
+        print_status "Starting data services..."
+        echo ""
+        if ./scripts/data-start.sh; then
+            print_success "Data services started successfully! 🎉"
+            echo ""
+        else
+            print_error "Failed to start data services!"
+            echo "Please run './scripts/data-start.sh' manually and try again."
+            exit 1
+        fi
+    else
+        print_error "Data services are required for Django to run."
+        echo ""
+        echo "💡 To start data services manually:"
+        echo "   ./scripts/data-start.sh"
+        echo ""
+        echo "Then run this script again: ./scripts/local-dev.sh"
+        exit 1
+    fi
 fi
 
 # Activate virtual environment
