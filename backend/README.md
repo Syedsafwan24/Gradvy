@@ -18,7 +18,7 @@ Get Gradvy running in under 2 minutes with our hybrid setup:
 
 ```bash
 # 1. Clone and navigate
-git clone <repository-url>
+git clone https://github.com/Syedsafwan24/Gradvy.git
 cd Gradvy/backend
 
 # 2. Setup local environment
@@ -327,6 +327,6 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 **🔐 Built for secure, scalable authentication**
 
-[⭐ Star this repo](https://github.com/your-org/gradvy) | [🐛 Report Bug](https://github.com/your-org/gradvy/issues) | [💡 Request Feature](https://github.com/your-org/gradvy/issues)
+[⭐ Star this repo](https://github.com/Syedsafwan24/Gradvy) | [🐛 Report Bug](https://github.com/Syedsafwan24/Gradvy/issues) | [💡 Request Feature](https://github.com/Syedsafwan24/Gradvy/issues)
 
 </div>

@@ -1,7 +1,6 @@
 import secrets
 import string
 import logging
-from django.utils import timezone
 from .models import BackupCode
 
 logger = logging.getLogger(__name__)

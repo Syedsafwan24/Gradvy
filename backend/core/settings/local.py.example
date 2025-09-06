@@ -1,0 +1,56 @@
+"""
+Local settings override file for Gradvy project.
+
+Copy this file to local.py and customize for your development environment.
+This file should NOT be committed to version control.
+"""
+
+# Database override for local development
+# Uncomment and modify if you need different database settings
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'gradvy_local',
+#         'USER': 'your_username',
+#         'PASSWORD': 'your_password',
+#         'HOST': 'localhost',
+#         'PORT': '5432',
+#     }
+# }
+
+# Celery broker override
+# CELERY_BROKER_URL = 'redis://localhost:6379/0'
+
+# Email backend override for local testing
+# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+# EMAIL_HOST = 'localhost'
+# EMAIL_PORT = 1025  # For testing with mailhog
+
+# Debug toolbar settings (uncomment to enable)
+# if DEBUG:
+#     INSTALLED_APPS += ['debug_toolbar']
+#     MIDDLEWARE = ['debug_toolbar.middleware.DebugToolbarMiddleware'] + MIDDLEWARE
+#     INTERNAL_IPS = ['127.0.0.1', 'localhost']
+#     DEBUG_TOOLBAR_CONFIG = {
+#         'SHOW_TOOLBAR_CALLBACK': lambda request: DEBUG,
+#     }
+
+# Additional logging for specific modules
+# LOGGING['loggers'].update({
+#     'your_specific_module': {
+#         'handlers': ['console'],
+#         'level': 'DEBUG',
+#         'propagate': False,
+#     },
+# })
+
+# Custom secret key for local development
+# SECRET_KEY = 'your-local-secret-key-here'
+
+# Local CORS settings
+# CORS_ALLOWED_ORIGINS += [
+#     'http://localhost:3001',
+# ]
+
+# Additional middleware for local development
+# MIDDLEWARE = ['some.custom.middleware'] + MIDDLEWARE

@@ -30,7 +30,7 @@ const Footer = () => {
 
 	const socialLinks = [
 		{ name: 'Twitter', icon: Twitter, href: 'https://twitter.com/gradvy' },
-		{ name: 'GitHub', icon: Github, href: 'https://github.com/gradvy' },
+		{ name: 'GitHub', icon: Github, href: 'https://github.com/Syedsafwan24/Gradvy' },
 		{
 			name: 'LinkedIn',
 			icon: Linkedin,

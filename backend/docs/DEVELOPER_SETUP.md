@@ -21,7 +21,7 @@ If you're familiar with Django, Docker, and Python development, use our automate
 ### Windows:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Syedsafwan24/Gradvy.git
 cd core-backend
 ./setup-dev.bat
 ```
@@ -29,7 +29,7 @@ cd core-backend
 ### Linux/macOS:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Syedsafwan24/Gradvy.git
 cd core-backend
 chmod +x setup-dev.sh
 ./setup-dev.sh
@@ -212,7 +212,7 @@ core-backend/
 ### Step 1: Clone the Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Syedsafwan24/Gradvy.git
 cd core-backend
 ```
 

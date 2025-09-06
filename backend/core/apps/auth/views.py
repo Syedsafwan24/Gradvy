@@ -1,24 +1,21 @@
 from rest_framework import status, views, permissions
 from rest_framework.response import Response
-from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
-from django.contrib.auth import login, logout
 from django_otp import devices_for_user
 from django_otp.plugins.otp_totp.models import TOTPDevice
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.core.exceptions import PermissionDenied, ValidationError
-from axes.decorators import axes_dispatch
 from axes.exceptions import AxesBackendPermissionDenied
 import logging
 from .serializers import *
-from .models import User  # Using standard TOTPDevice from django-otp
+from .models import User
 from .utils import log_auth_event, generate_backup_codes
 import qrcode
 import base64
 from io import BytesIO
-import os # Added for os.urandom
-from django_otp.util import random_hex # Keep if still used elsewhere, but not for secret generation
+import os
 from django.utils import timezone
 import jwt
 from django.conf import settings
@@ -264,17 +261,7 @@ class MFAEnrollmentView(views.APIView):
             return Response({'error': 'Device not found'}, 
                           status=status.HTTP_400_BAD_REQUEST)
 
-        # --- DEBUGGING START ---
-        print(f"DEBUG: MFA Enroll Confirm - User: {request.user.email}")
-        print(f"DEBUG: Device ID: {device_id}")
-        print(f"DEBUG: Code received: {code}")
-        print(f"DEBUG: Device key: {device.key}")
-        print(f"DEBUG: Device digits: {device.digits}")
-        print(f"DEBUG: Device step: {device.step}")
-        print(f"DEBUG: Server time: {timezone.now()}")
         is_valid = device.verify_token(code)
-        print(f"DEBUG: device.verify_token({code}) result: {is_valid}")
-        # --- DEBUGGING END ---
 
         if is_valid:
             device.confirmed = True
