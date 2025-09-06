@@ -19,6 +19,7 @@ import os
 from django.utils import timezone
 import jwt
 from django.conf import settings
+from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class LoginView(TokenObtainPairView):
             serializer.is_valid(raise_exception=True)
 
             user = serializer.validated_data['user']
+            remember_me = serializer.validated_data.get('remember_me', False)
 
             # Check if MFA is required
             if user.mfa_enrolled:
@@ -40,6 +42,7 @@ class LoginView(TokenObtainPairView):
                 mfa_payload = {
                     'user_id': user.id,
                     'mfa_pending': True,
+                    'remember_me': remember_me,  # Store remember_me for after MFA
                     'exp': timezone.now().timestamp() + 300,  # 5 minutes expiry
                     'iat': timezone.now().timestamp(),
                 }
@@ -55,7 +58,7 @@ class LoginView(TokenObtainPairView):
                 }, status=status.HTTP_200_OK)
 
             # No MFA required, proceed with login
-            return self._complete_login(request, user)
+            return self._complete_login(request, user, remember_me)
             
         except AxesBackendPermissionDenied:
             # This is raised by django-axes when user is locked out
@@ -91,19 +94,40 @@ class LoginView(TokenObtainPairView):
                 'error_code': 'INTERNAL_ERROR'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    def _complete_login(self, request, user):
-        # Generate tokens
+    def _complete_login(self, request, user, remember_me=False):
+        # Generate tokens with custom expiry for remember_me
         refresh = RefreshToken.for_user(user)
+        
+        if remember_me:
+            # Extend refresh token lifetime for remember_me
+            refresh.set_exp(lifetime=timezone.timedelta(days=30))
+        
         access = refresh.access_token
 
         # Log successful login
         log_auth_event(user, 'login_success', request, success=True)
 
-        return Response({
+        response_data = {
+            'message': 'Login successful',
             'access': str(access),
             'refresh': str(refresh),
             'user': UserSerializer(user).data
-        })
+        }
+        
+        response = Response(response_data, status=status.HTTP_200_OK)
+        
+        # Set refresh token as HTTP-only cookie
+        cookie_max_age = 30 * 24 * 60 * 60 if remember_me else 7 * 24 * 60 * 60  # 30 days or 7 days
+        response.set_cookie(
+            'refresh_token',
+            str(refresh),
+            max_age=cookie_max_age,
+            httponly=True,
+            secure=not settings.DEBUG,
+            samesite='Lax'
+        )
+        
+        return response
 
 @method_decorator(csrf_exempt, name='dispatch')
 class MFAVerifyView(views.APIView):
@@ -120,6 +144,7 @@ class MFAVerifyView(views.APIView):
             # Decode the MFA token
             mfa_payload = jwt.decode(mfa_token, settings.SECRET_KEY, algorithms=['HS256'])
             user_id = mfa_payload.get('user_id')
+            remember_me = mfa_payload.get('remember_me', False)
             
             if not mfa_payload.get('mfa_pending'):
                 return Response({'error': 'Invalid MFA token'}, 
@@ -151,19 +176,11 @@ class MFAVerifyView(views.APIView):
 
         for device in totp_devices:
             if device.verify_token(code):
-                # MFA successful, complete login
-                # Generate tokens
-                refresh = RefreshToken.for_user(user)
-                access = refresh.access_token
-
+                # MFA successful, complete login with remember_me
                 # Log successful MFA verification
                 log_auth_event(user, 'mfa_verify', request, success=True)
-
-                return Response({
-                    'access': str(access),
-                    'refresh': str(refresh),
-                    'user': UserSerializer(user).data
-                })
+                
+                return self._complete_login(request, user, remember_me)
 
         # MFA failed
         log_auth_event(user, 'mfa_verify', request, success=False)
@@ -313,3 +330,74 @@ class MFADisableView(views.APIView):
         except Exception as e:
             log_auth_event(user, 'mfa_disable', request, success=False, details={'error': str(e)})
             return Response({'error': 'Failed to disable MFA'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class UserRegistrationView(views.APIView):
+    """User registration endpoint"""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = UserRegistrationSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            user = serializer.save()
+            
+            # Generate tokens for immediate login after registration
+            refresh = RefreshToken.for_user(user)
+            access_token = str(refresh.access_token)
+            refresh_token = str(refresh)
+            
+            # Get user data
+            user_data = UserSerializer(user).data
+            
+            response_data = {
+                'message': 'Registration successful',
+                'user': user_data,
+                'access': access_token,
+                'refresh': refresh_token
+            }
+            
+            response = Response(response_data, status=status.HTTP_201_CREATED)
+            
+            # Set refresh token as HTTP-only cookie
+            response.set_cookie(
+                'refresh_token',
+                refresh_token,
+                max_age=7 * 24 * 60 * 60,  # 7 days
+                httponly=True,
+                secure=not settings.DEBUG,
+                samesite='Lax'
+            )
+            
+            # Log successful registration
+            log_auth_event(user, 'register', request, success=True)
+            
+            return response
+        
+        return Response({
+            'message': 'Registration failed',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PasswordResetView(views.APIView):
+    """Password reset endpoint (placeholder for future implementation)"""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            email = serializer.validated_data['email']
+            
+            # TODO: Implement actual password reset logic with email sending
+            # For now, just return success message
+            return Response({
+                'message': f'Password reset instructions have been sent to {email}',
+                'note': 'This is a placeholder. Email functionality will be implemented later.'
+            }, status=status.HTTP_200_OK)
+        
+        return Response({
+            'message': 'Password reset failed',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)

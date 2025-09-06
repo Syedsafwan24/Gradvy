@@ -40,7 +40,7 @@ INSTALLED_APPS = [
     # 'django_celery_beat',  # Commented out due to Django 5.1 compatibility issues
     
     # Local apps
-    'auth.apps.AuthConfig',
+    'apps.auth.apps.AuthConfig',
 ]
 
 # Celery Configuration
