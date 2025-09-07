@@ -60,8 +60,9 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True # Added to address deprecation 
 UNCONFIRMED_TOTP_RETENTION_HOURS = 24 # Unconfirmed TOTP devices older than this will be deleted
 USED_BACKUP_CODE_RETENTION_DAYS = 90 # Used backup codes older than this will be deleted
 
-# django-celery-beat scheduler
-CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+# Celery Beat scheduler - using built-in file-based scheduler for local development
+# Note: django_celery_beat is disabled due to Django 5.1 compatibility issues
+CELERY_BEAT_SCHEDULER = 'celery.beat:PersistentScheduler'
 
 # Custom user model
 AUTH_USER_MODEL = 'gradvy_auth.User'
