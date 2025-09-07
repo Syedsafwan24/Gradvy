@@ -40,30 +40,44 @@ const SettingsPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="space-y-6">
-          {/* Page Header */}
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Settings</h1>
-            <p className="text-gray-600">Manage your account preferences and security settings</p>
-          </div>
-
-          <div className="lg:flex lg:space-x-6 space-y-6 lg:space-y-0">
-            {/* Settings Navigation */}
-            <div className="lg:w-1/4">
-              <Card className="p-6">
-                <SettingsNav activeTab={activeTab} onTabChange={setActiveTab} />
-              </Card>
+    <div className="min-h-screen bg-gray-50">
+      {/* Full-width header */}
+      <div className="w-full border-b bg-white shadow-sm">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 3xl:px-24 py-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">Settings</h1>
+              <p className="text-gray-600">Manage your account preferences and security settings</p>
             </div>
-
-            {/* Settings Content */}
-            <div className="lg:w-3/4">
-              <Card className="p-6">
-                {renderActiveSection()}
-              </Card>
+            {/* Optional header actions */}
+            <div className="hidden sm:flex items-center space-x-3">
+              <span className="text-sm text-gray-500">Last updated: {new Date().toLocaleDateString()}</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Main content area with full-width responsive layout */}
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 3xl:px-24 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Mobile-first navigation - full width on mobile, sidebar on desktop */}
+          <aside className="lg:col-span-3 xl:col-span-2">
+            <Card className="sticky top-6">
+              <SettingsNav activeTab={activeTab} onTabChange={setActiveTab} />
+            </Card>
+          </aside>
+
+          {/* Content area - full width on mobile, remaining space on desktop */}
+          <main className="lg:col-span-9 xl:col-span-10">
+            <div className="space-y-6">
+              {/* Content card with responsive padding */}
+              <Card className="overflow-hidden">
+                <div className="p-4 sm:p-6 lg:p-8">
+                  {renderActiveSection()}
+                </div>
+              </Card>
+            </div>
+          </main>
         </div>
       </div>
     </div>

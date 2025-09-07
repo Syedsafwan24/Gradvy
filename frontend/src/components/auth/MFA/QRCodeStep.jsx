@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { QrCode, Smartphone, Copy, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
 import { 
   selectMFAQRCode, 
   selectMFASecret,
   setMFAEnrollmentData,
-  selectMFAIsEnrolling 
+  selectMFAIsEnrolling,
+  setMFAEnrolling
 } from '../../../store/slices/authSlice';
 import { useEnrollMFAMutation } from '../../../store/api/authApi';
 import { Button } from '../../ui/Button';
@@ -23,45 +24,68 @@ const QRCodeStep = ({ onNext }) => {
   
   const [enrollMFA, { isLoading: isEnrollingMFA }] = useEnrollMFAMutation();
 
-  useEffect(() => {
-    // Start MFA enrollment when component mounts
-    const startEnrollment = async () => {
-      if (!qrCode && !secret) {
-        setIsLoading(true);
-        try {
-          const result = await enrollMFA().unwrap();
-          dispatch(setMFAEnrollmentData(result));
-        } catch (error) {
-          console.error('MFA enrollment initiation failed:', error);
-          toast.error('Failed to start MFA setup. Please try again.');
-        } finally {
-          setIsLoading(false);
-        }
+  const startEnrollment = useCallback(async () => {
+    if (!qrCode && !secret) {
+      setIsLoading(true);
+      try {
+        const result = await enrollMFA().unwrap();
+        dispatch(setMFAEnrollmentData(result));
+        // Reset the enrolling state after successful QR code generation
+        dispatch(setMFAEnrolling(false));
+      } catch (error) {
+        console.error('MFA enrollment initiation failed:', error);
+        toast.error('Failed to start MFA setup. Please try again.');
+      } finally {
+        setIsLoading(false);
       }
-    };
-
-    startEnrollment();
+    }
   }, [enrollMFA, dispatch, qrCode, secret]);
+
+  useEffect(() => {
+    startEnrollment();
+  }, [startEnrollment]);
 
   const copySecret = async () => {
     if (secret) {
       try {
-        await navigator.clipboard.writeText(secret);
-        toast.success('Secret copied to clipboard!');
+        // Check if clipboard API is available (requires HTTPS or localhost)
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(secret);
+          toast.success('Secret copied to clipboard!');
+        } else {
+          // Fallback for non-secure contexts
+          const textArea = document.createElement('textarea');
+          textArea.value = secret;
+          textArea.style.position = 'absolute';
+          textArea.style.left = '-999999px';
+          textArea.style.top = '-999999px';
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+          
+          try {
+            const successful = document.execCommand('copy');
+            if (successful) {
+              toast.success('Secret copied to clipboard!');
+            } else {
+              throw new Error('Copy command failed');
+            }
+          } catch (err) {
+            // If all else fails, show the secret and ask user to copy manually
+            toast.error('Unable to copy automatically. Please copy the secret manually.');
+            setShowSecret(true);
+          } finally {
+            document.body.removeChild(textArea);
+          }
+        }
       } catch (error) {
         console.error('Failed to copy secret:', error);
-        toast.error('Failed to copy secret');
+        toast.error('Unable to copy automatically. Please copy the secret manually.');
+        setShowSecret(true);
       }
     }
   };
 
-  const handleContinue = () => {
-    if (!secret) {
-      toast.error('MFA setup not ready. Please wait or try again.');
-      return;
-    }
-    onNext();
-  };
 
   if (isLoading || isEnrollingMFA) {
     return (
@@ -86,86 +110,96 @@ const QRCodeStep = ({ onNext }) => {
       </div>
 
       {qrCode ? (
-        <div className="flex flex-col lg:flex-row gap-8">
+        <div className="space-y-8 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-8">
           {/* QR Code Section */}
-          <div className="flex-1">
-            <div className="bg-white border-2 border-gray-200 rounded-lg p-6 text-center">
-              <h4 className="font-semibold text-gray-900 mb-4 flex items-center justify-center">
-                <QrCode className="h-5 w-5 mr-2" />
+          <div className="order-2 lg:order-1">
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-100 rounded-xl p-6 text-center">
+              <h4 className="font-semibold text-gray-900 mb-6 flex items-center justify-center text-lg">
+                <QrCode className="h-6 w-6 mr-2 text-blue-600" />
                 Scan QR Code
               </h4>
               
-              <div className="bg-white p-4 rounded-lg border inline-block">
-                <img 
-                  src={qrCode} 
-                  alt="MFA QR Code" 
-                  className="w-48 h-48 mx-auto"
-                />
+              <div className="flex justify-center mb-6">
+                <div className="bg-white p-6 rounded-2xl shadow-lg border-4 border-white">
+                  <img 
+                    src={qrCode} 
+                    alt="MFA Setup QR Code" 
+                    className="w-48 h-48 block mx-auto"
+                    style={{ imageRendering: 'pixelated' }}
+                  />
+                </div>
               </div>
               
-              <p className="text-sm text-gray-600 mt-4">
-                Scan this QR code with any authenticator app like Google Authenticator, 
-                Authy, or Microsoft Authenticator.
-              </p>
+              <div className="space-y-3 text-sm text-gray-700">
+                <p className="font-medium">📱 Open your authenticator app and scan this code</p>
+                <div className="bg-white/70 rounded-lg p-3">
+                  <p className="text-xs text-gray-600">
+                    The QR code contains your secret key and account information for secure setup
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Manual Entry Section */}
-          <div className="flex-1">
-            <div className="bg-gray-50 border-2 border-gray-200 rounded-lg p-6">
-              <h4 className="font-semibold text-gray-900 mb-4 flex items-center">
-                <Smartphone className="h-5 w-5 mr-2" />
+          <div className="order-1 lg:order-2">
+            <div className="bg-gradient-to-br from-gray-50 to-slate-50 border-2 border-gray-200 rounded-xl p-6">
+              <h4 className="font-semibold text-gray-900 mb-6 flex items-center text-lg">
+                <Smartphone className="h-6 w-6 mr-2 text-gray-600" />
                 Manual Entry
               </h4>
               
-              <p className="text-sm text-gray-600 mb-4">
-                If you can't scan the QR code, you can enter this secret key manually:
+              <p className="text-sm text-gray-600 mb-6">
+                Can't scan the QR code? Enter this secret key manually in your authenticator app:
               </p>
               
-              <div className="bg-white border rounded-lg p-3 mb-4">
+              <div className="bg-white border-2 border-gray-200 rounded-xl p-4 mb-6">
                 <div className="flex items-center justify-between">
-                  <code className="text-sm font-mono text-gray-800 flex-1 mr-2">
+                  <code className="text-sm sm:text-base font-mono text-gray-800 flex-1 mr-3 break-all">
                     {showSecret ? secret : '••••••••••••••••••••••••••••••••'}
                   </code>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 flex-shrink-0">
                     <button
                       onClick={() => setShowSecret(!showSecret)}
-                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                       title={showSecret ? 'Hide secret' : 'Show secret'}
                     >
                       {showSecret ? (
-                        <EyeOff className="h-4 w-4 text-gray-500" />
+                        <EyeOff className="h-5 w-5 text-gray-500" />
                       ) : (
-                        <Eye className="h-4 w-4 text-gray-500" />
+                        <Eye className="h-5 w-5 text-gray-500" />
                       )}
                     </button>
                     <button
                       onClick={copySecret}
-                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                       title="Copy secret"
                     >
-                      <Copy className="h-4 w-4 text-gray-500" />
+                      <Copy className="h-5 w-5 text-gray-500" />
                     </button>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-3 text-sm text-gray-600">
-                <div className="flex items-start space-x-2">
-                  <span className="font-semibold text-gray-700 mt-0.5">1.</span>
-                  <span>Open your authenticator app</span>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <span className="font-semibold text-gray-700 mt-0.5">2.</span>
-                  <span>Add a new account manually</span>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <span className="font-semibold text-gray-700 mt-0.5">3.</span>
-                  <span>Enter the secret key above</span>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <span className="font-semibold text-gray-700 mt-0.5">4.</span>
-                  <span>Name it "Gradvy" or similar</span>
+              <div className="bg-white/70 rounded-xl p-4">
+                <h5 className="font-medium text-gray-900 mb-3">📝 Manual Setup Steps:</h5>
+                <div className="space-y-3 text-sm text-gray-700">
+                  <div className="flex items-start space-x-3">
+                    <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-xs font-bold">1</span>
+                    <span>Open your authenticator app</span>
+                  </div>
+                  <div className="flex items-start space-x-3">
+                    <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-xs font-bold">2</span>
+                    <span>Select "Add account manually" or "Enter setup key"</span>
+                  </div>
+                  <div className="flex items-start space-x-3">
+                    <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-xs font-bold">3</span>
+                    <span>Enter the secret key shown above</span>
+                  </div>
+                  <div className="flex items-start space-x-3">
+                    <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-xs font-bold">4</span>
+                    <span>Name the account "Gradvy" or "Gradvy Account"</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -188,25 +222,30 @@ const QRCodeStep = ({ onNext }) => {
       )}
 
       {/* Popular Authenticator Apps */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h5 className="font-semibold text-blue-900 mb-2">Recommended Authenticator Apps:</h5>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
-          <div className="text-blue-800">📱 Google Authenticator</div>
-          <div className="text-blue-800">🔐 Authy</div>
-          <div className="text-blue-800">🪟 Microsoft Authenticator</div>
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-100 rounded-xl p-6">
+        <h5 className="font-semibold text-gray-900 mb-4 text-center">🔐 Recommended Authenticator Apps</h5>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white/70 rounded-lg p-3 text-center hover:bg-white/90 transition-colors">
+            <div className="text-2xl mb-1">📱</div>
+            <div className="font-medium text-gray-900 text-sm">Google Authenticator</div>
+            <div className="text-xs text-gray-600">Free • iOS & Android</div>
+          </div>
+          <div className="bg-white/70 rounded-lg p-3 text-center hover:bg-white/90 transition-colors">
+            <div className="text-2xl mb-1">🛡️</div>
+            <div className="font-medium text-gray-900 text-sm">Authy</div>
+            <div className="text-xs text-gray-600">Multi-device • Cloud backup</div>
+          </div>
+          <div className="bg-white/70 rounded-lg p-3 text-center hover:bg-white/90 transition-colors">
+            <div className="text-2xl mb-1">🪟</div>
+            <div className="font-medium text-gray-900 text-sm">Microsoft Authenticator</div>
+            <div className="text-xs text-gray-600">Enterprise features</div>
+          </div>
+        </div>
+        <div className="text-center mt-4">
+          <p className="text-xs text-gray-600">Any TOTP-compatible authenticator app will work with Gradvy</p>
         </div>
       </div>
 
-      {/* Continue Button */}
-      <div className="flex justify-center pt-4">
-        <Button
-          onClick={handleContinue}
-          disabled={!secret}
-          className="px-8"
-        >
-          I've Added the Account
-        </Button>
-      </div>
     </div>
   );
 };

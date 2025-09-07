@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useChangePasswordMutation } from '../../store/api/authApi';
 import { Button } from '../ui/Button';
+import MFAManager from '../auth/MFA/MFAManager';
 import toast from 'react-hot-toast';
 
 const passwordSchema = yup.object({
@@ -77,6 +78,48 @@ const SecuritySettings = ({ user }) => {
 
   return (
     <div className="space-y-8">
+      {/* Section Header */}
+      <div className="border-b pb-6">
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">Security & Authentication</h2>
+        <p className="text-gray-600">Protect your account with strong security measures</p>
+      </div>
+
+      {/* Two-Factor Authentication Section */}
+      <div className="border-b pb-8">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-lg font-medium text-gray-900 flex items-center mb-2">
+              <svg className="h-5 w-5 mr-2 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              Two-Factor Authentication
+            </h3>
+            <p className="text-sm text-gray-600">
+              Add an extra layer of security to your account with 2FA
+            </p>
+          </div>
+          <div className="flex items-center space-x-2">
+            {user?.is_mfa_enabled ? (
+              <div className="flex items-center space-x-1 bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
+                <CheckCircle className="h-4 w-4" />
+                <span>Enabled</span>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-1 bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-medium">
+                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <span>Disabled</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* MFA Manager Component Integration */}
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
+          <MFAManager user={user} />
+        </div>
+      </div>
 
       {/* Password Change */}
       <div className="border-b pb-8">

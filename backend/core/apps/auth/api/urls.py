@@ -20,6 +20,8 @@ urlpatterns = [
     path('mfa/verify/', views.MFAVerifyView.as_view(), name='mfa_verify'),
     path('mfa/enroll/', views.MFAEnrollmentView.as_view(), name='mfa_enroll'),
     path('mfa/disable/', views.MFADisableView.as_view(), name='mfa_disable'),
+    path('mfa/status/', views.MFAStatusView.as_view(), name='mfa_status'),
+    path('mfa/backup-codes/', views.MFABackupCodesView.as_view(), name='mfa_backup_codes'),
     
     # User management
     path('me/', views.UserProfileView.as_view(), name='profile'),

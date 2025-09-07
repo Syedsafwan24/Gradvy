@@ -94,6 +94,9 @@ const authSlice = createSlice({
     setMFADisabling: (state, action) => {
       state.mfa.isDisabling = action.payload;
     },
+    setMFABackupCodes: (state, action) => {
+      state.mfa.backupCodes = action.payload || [];
+    },
     clearMFAData: (state) => {
       state.mfa = {
         isEnrolling: false,
@@ -138,6 +141,7 @@ export const {
   setMFAEnrolling,
   setMFACurrentStep,
   setMFADisabling,
+  setMFABackupCodes,
   clearMFAData,
   // Password reset actions
   setPasswordResetRequesting,

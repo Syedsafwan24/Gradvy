@@ -242,3 +242,5 @@ LOGGING = {
 # MFA Cleanup Settings
 UNCONFIRMED_TOTP_RETENTION_HOURS = 24
 USED_BACKUP_CODE_RETENTION_DAYS = 90
+# Whether to cleanup MFA data immediately when disabled (True) or delay it (False)
+MFA_CLEANUP_ON_DISABLE_IMMEDIATE = True

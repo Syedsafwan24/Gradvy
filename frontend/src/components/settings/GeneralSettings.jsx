@@ -43,11 +43,24 @@ const GeneralSettings = ({ user }) => {
 
   const onSubmit = async (data) => {
     try {
-      await updateProfile(data).unwrap();
+      // Transform data to match backend API expectations
+      const profileData = {
+        first_name: data.first_name,
+        last_name: data.last_name,
+        email: data.email,
+        phone: data.phone || '',
+        bio: data.bio || '',
+      };
+
+      await updateProfile(profileData).unwrap();
       toast.success('Profile updated successfully!');
     } catch (error) {
-      console.error('Profile update update failed:', error);
-      toast.error('Failed to update profile. Please try again.');
+      console.error('Profile update failed:', error);
+      const errorMessage = error?.data?.message || 
+                          error?.data?.email?.[0] || 
+                          error?.data?.phone?.[0] || 
+                          'Failed to update profile. Please try again.';
+      toast.error(errorMessage);
     }
   };
 

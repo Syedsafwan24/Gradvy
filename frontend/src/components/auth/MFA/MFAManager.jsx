@@ -8,7 +8,11 @@ import {
   selectMFABackupCodes,
   setMFABackupCodes 
 } from '../../../store/slices/authSlice';
-import { useDisableMFAMutation } from '../../../store/api/authApi';
+import { 
+  useDisableMFAMutation,
+  useGetMFAStatusQuery,
+  useGetMFABackupCodesQuery 
+} from '../../../store/api/authApi';
 import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
 import MFAEnrollmentWizard from './MFAEnrollmentWizard';
@@ -22,7 +26,14 @@ const MFAManager = ({ compact = false }) => {
   
   const [showEnrollmentWizard, setShowEnrollmentWizard] = useState(false);
   const [showBackupManager, setShowBackupManager] = useState(false);
+  
+  // API hooks
   const [disableMFA, { isLoading: isDisablingMFA }] = useDisableMFAMutation();
+  const { data: mfaStatus, isLoading: isLoadingStatus, refetch: refetchStatus } = useGetMFAStatusQuery();
+  const { data: backupCodesData, isLoading: isLoadingCodes } = useGetMFABackupCodesQuery(
+    undefined, 
+    { skip: !user?.is_mfa_enabled }
+  );
 
   const handleEnableMFA = () => {
     setShowEnrollmentWizard(true);
@@ -45,40 +56,58 @@ const MFAManager = ({ compact = false }) => {
 
   const handleEnrollmentComplete = () => {
     setShowEnrollmentWizard(false);
+    refetchStatus(); // Refresh MFA status after enrollment
     toast.success('Two-factor authentication enabled successfully!');
   };
+
+  // Use real API data or fallback to user data
+  const isMFAEnabled = mfaStatus?.is_mfa_enabled ?? user?.is_mfa_enabled ?? false;
+  const hasBackupCodes = backupCodesData?.backup_codes?.length > 0;
 
   if (compact) {
     return (
       <div className="space-y-4">
-        {/* Compact MFA Status */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Shield className={`h-5 w-5 ${user?.is_mfa_enabled ? 'text-green-600' : 'text-gray-400'}`} />
-            <div>
-              <span className="text-sm font-medium text-gray-900">Two-Factor Authentication</span>
-              <p className="text-xs text-gray-600">
-                {user?.is_mfa_enabled ? 'Active and protecting your account' : 'Not enabled'}
-              </p>
-            </div>
+        {/* Loading state */}
+        {isLoadingStatus && (
+          <div className="flex items-center justify-center py-4">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span className="ml-2 text-sm text-gray-600">Loading MFA status...</span>
           </div>
-          <div className="flex items-center space-x-2">
-            <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-              user?.is_mfa_enabled 
-                ? 'bg-green-100 text-green-800' 
-                : 'bg-red-100 text-red-800'
-            }`}>
-              {user?.is_mfa_enabled ? 'Enabled' : 'Disabled'}
+        )}
+
+        {!isLoadingStatus && (
+          <>
+            {/* Compact MFA Status */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <Shield className={`h-5 w-5 ${isMFAEnabled ? 'text-green-600' : 'text-gray-400'}`} />
+                <div>
+                  <span className="text-sm font-medium text-gray-900">Two-Factor Authentication</span>
+                  <p className="text-xs text-gray-600">
+                    {isMFAEnabled ? 'Active and protecting your account' : 'Not enabled'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  isMFAEnabled 
+                    ? 'bg-green-100 text-green-800' 
+                    : 'bg-red-100 text-red-800'
+                }`}>
+                  {isMFAEnabled ? 'Enabled' : 'Disabled'}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={isMFAEnabled ? () => setShowBackupManager(true) : handleEnableMFA}
+                  disabled={isDisablingMFA}
+                >
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={user?.is_mfa_enabled ? () => setShowBackupManager(true) : handleEnableMFA}
-            >
-              <Settings className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+          </>
+        )}
 
         {/* MFA Wizards and Managers */}
         <MFAEnrollmentWizard
@@ -99,7 +128,16 @@ const MFAManager = ({ compact = false }) => {
 
   return (
     <div className="space-y-6">
-      {user?.is_mfa_enabled ? (
+      {/* Loading state for full component */}
+      {isLoadingStatus && (
+        <div className="flex flex-col items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Loading MFA Settings</h3>
+          <p className="text-gray-600 text-center">Please wait while we fetch your security settings...</p>
+        </div>
+      )}
+
+      {!isLoadingStatus && isMFAEnabled ? (
         /* MFA Enabled State */
         <Card className="p-6">
           <div className="flex items-start justify-between mb-4">
@@ -141,7 +179,7 @@ const MFAManager = ({ compact = false }) => {
             </Button>
           </div>
         </Card>
-      ) : (
+      ) : !isLoadingStatus ? (
         /* MFA Disabled State */
         <Card className="p-6">
           <div className="flex items-start space-x-3 mb-6">
@@ -174,7 +212,7 @@ const MFAManager = ({ compact = false }) => {
             Enable Two-Factor Authentication
           </Button>
         </Card>
-      )}
+      ) : null}
 
       {/* MFA Wizards and Managers */}
       <MFAEnrollmentWizard

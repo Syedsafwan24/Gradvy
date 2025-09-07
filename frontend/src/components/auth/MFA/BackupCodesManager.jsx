@@ -18,6 +18,10 @@ import {
   selectMFABackupCodes,
   setMFABackupCodes 
 } from '../../../store/slices/authSlice';
+import { 
+  useGetMFABackupCodesQuery,
+  useRegenerateMFABackupCodesMutation 
+} from '../../../store/api/authApi';
 import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
 import toast from 'react-hot-toast';
@@ -31,12 +35,15 @@ const BackupCodesManager = ({
   const dispatch = useDispatch();
   const backupCodes = useSelector(selectMFABackupCodes);
   const [showCodes, setShowCodes] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState(false);
   const [acknowledgedSaved, setAcknowledgedSaved] = useState(false);
+  
+  // API hooks
+  const { data: backupCodesData, isLoading, refetch } = useGetMFABackupCodesQuery();
+  const [regenerateBackupCodes, { isLoading: isRegenerating }] = useRegenerateMFABackupCodesMutation();
 
-  // Mock backup codes if none exist in state (for demo purposes)
-  const codes = backupCodes?.length ? backupCodes : [
-    'ABC123DEF456',
+  // Use real API data or fallback to state/mock data
+  const codes = backupCodesData?.backup_codes || backupCodes || [
+    'ABC123DEF456', // Fallback mock data for development
     'GHI789JKL012', 
     'MNO345PQR678',
     'STU901VWX234',
@@ -95,39 +102,21 @@ const BackupCodesManager = ({
     toast.success('Backup codes downloaded!');
   };
 
-  const regenerateBackupCodes = async () => {
+  const handleRegenerateBackupCodes = async () => {
     if (!window.confirm('Are you sure you want to generate new backup codes? Your old backup codes will no longer work.')) {
       return;
     }
-
-    setIsRegenerating(true);
     
     try {
-      // TODO: Implement actual API call to regenerate backup codes
-      // For now, simulate the API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Generate new mock codes
-      const newCodes = [
-        'NEW123ABC456',
-        'DEF789GHI012',
-        'JKL345MNO678', 
-        'PQR901STU234',
-        'VWX567YZ8901',
-        'ABC234DEF567',
-        'GHI890JKL123',
-        'MNO456PQR789'
-      ];
-      
-      dispatch(setMFABackupCodes(newCodes));
+      const result = await regenerateBackupCodes().unwrap();
+      dispatch(setMFABackupCodes(result.backup_codes));
       setShowCodes(true);
       setAcknowledgedSaved(false);
+      refetch(); // Refresh the backup codes data
       toast.success('New backup codes generated!');
     } catch (error) {
       console.error('Failed to regenerate backup codes:', error);
-      toast.error('Failed to regenerate backup codes');
-    } finally {
-      setIsRegenerating(false);
+      toast.error(error?.data?.error || 'Failed to regenerate backup codes');
     }
   };
 
@@ -175,6 +164,12 @@ const BackupCodesManager = ({
             <div className="flex items-center justify-between mb-4">
               <h4 className="font-semibold text-gray-900">Your Backup Codes</h4>
               <div className="flex items-center space-x-2">
+                {isLoading && (
+                  <div className="flex items-center space-x-1 text-sm text-gray-500">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
+                    <span>Loading...</span>
+                  </div>
+                )}
                 <button
                   onClick={() => setShowCodes(!showCodes)}
                   className="p-2 hover:bg-gray-200 rounded transition-colors"
@@ -244,7 +239,7 @@ const BackupCodesManager = ({
               Download as File
             </Button>
             <Button
-              onClick={regenerateBackupCodes}
+              onClick={handleRegenerateBackupCodes}
               variant="outline"
               disabled={isRegenerating}
               className="flex-1 flex items-center justify-center"

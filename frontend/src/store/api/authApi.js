@@ -188,6 +188,15 @@ export const authApi = createApi({
       invalidatesTags: ['User', 'MFA'],
     }),
 
+    confirmMFAEnrollment: builder.mutation({
+      query: ({ device_id, code }) => ({
+        url: 'mfa/enroll/',
+        method: 'PUT',
+        body: { device_id, code },
+      }),
+      invalidatesTags: ['User', 'MFA'],
+    }),
+
     disableMFA: builder.mutation({
       query: (data) => ({
         url: 'mfa/disable/',
@@ -195,6 +204,24 @@ export const authApi = createApi({
         body: data,
       }),
       invalidatesTags: ['User', 'MFA'],
+    }),
+
+    getMFAStatus: builder.query({
+      query: () => 'mfa/status/',
+      providesTags: ['MFA'],
+    }),
+
+    getMFABackupCodes: builder.query({
+      query: () => 'mfa/backup-codes/',
+      providesTags: ['MFA'],
+    }),
+
+    regenerateMFABackupCodes: builder.mutation({
+      query: () => ({
+        url: 'mfa/backup-codes/',
+        method: 'POST',
+      }),
+      invalidatesTags: ['MFA'],
     }),
 
     // User profile endpoints
@@ -232,7 +259,11 @@ export const {
   useChangePasswordMutation,
   useVerifyMFAMutation,
   useEnrollMFAMutation,
+  useConfirmMFAEnrollmentMutation,
   useDisableMFAMutation,
+  useGetMFAStatusQuery,
+  useGetMFABackupCodesQuery,
+  useRegenerateMFABackupCodesMutation,
   useGetProfileQuery,
   useUpdateProfileMutation,
   useRefreshTokenMutation,

@@ -189,19 +189,79 @@ class MFAVerifyView(views.APIView):
         return Response({'error': 'Invalid MFA code'}, 
                       status=status.HTTP_400_BAD_REQUEST)
 
+    def _complete_login(self, request, user, remember_me=False):
+        # Generate tokens with custom expiry for remember_me
+        refresh = RefreshToken.for_user(user)
+        
+        if remember_me:
+            # Extend refresh token lifetime for remember_me
+            refresh.set_exp(lifetime=timezone.timedelta(days=30))
+        
+        access = refresh.access_token
+
+        # Log successful login
+        log_auth_event(user, 'login_success', request, success=True)
+
+        response_data = {
+            'message': 'Login successful',
+            'access': str(access),
+            'refresh': str(refresh),
+            'user': UserSerializer(user).data
+        }
+        
+        response = Response(response_data, status=status.HTTP_200_OK)
+        
+        # Set refresh token as HTTP-only cookie
+        cookie_max_age = 30 * 24 * 60 * 60 if remember_me else 7 * 24 * 60 * 60  # 30 days or 7 days
+        response.set_cookie(
+            'refresh_token',
+            str(refresh),
+            max_age=cookie_max_age,
+            httponly=True,
+            secure=not settings.DEBUG,
+            samesite='Lax'
+        )
+        
+        return response
+
 @method_decorator(csrf_exempt, name='dispatch')
 class UserProfileView(views.APIView):
+    """Enhanced user profile view with comprehensive update support"""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        """Get current user profile data"""
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
 
     def put(self, request):
-        serializer = UserSerializer(request.user, data=request.data, partial=True)
+        """Full profile update (replace all fields)"""
+        serializer = UserProfileSerializer(request.user, data=request.data)
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
+            user = serializer.save()
+            # Return updated user data
+            response_serializer = UserSerializer(user)
+            log_auth_event(user, 'profile_updated', request, success=True, 
+                         details={'updated_fields': list(request.data.keys())})
+            return Response(response_serializer.data)
+        
+        log_auth_event(request.user, 'profile_update_failed', request, success=False, 
+                      details={'errors': serializer.errors})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def patch(self, request):
+        """Partial profile update (update only provided fields)"""
+        serializer = UserProfileSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            user = serializer.save()
+            # Return updated user data
+            response_serializer = UserSerializer(user)
+            log_auth_event(user, 'profile_updated', request, success=True, 
+                         details={'updated_fields': list(request.data.keys())})
+            return Response(response_serializer.data)
+        
+        log_auth_event(request.user, 'profile_update_failed', request, success=False, 
+                      details={'errors': serializer.errors})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -325,6 +385,18 @@ class MFADisableView(views.APIView):
             user.mfa_enrolled = False
             user.save()
 
+            # Trigger background task to clean up all MFA-related data
+            from ..tasks.tasks import cleanup_user_mfa_data
+            
+            # Check if cleanup should be immediate or delayed
+            cleanup_immediate = getattr(settings, 'MFA_CLEANUP_ON_DISABLE_IMMEDIATE', True)
+            if cleanup_immediate:
+                # Run cleanup immediately
+                cleanup_user_mfa_data.delay(user.id)
+            else:
+                # Delay cleanup by 5 minutes to allow for any recovery actions
+                cleanup_user_mfa_data.apply_async(args=[user.id], countdown=300)
+
             # Log MFA disable event
             log_auth_event(user, 'mfa_disable', request, success=True)
 
@@ -332,6 +404,100 @@ class MFADisableView(views.APIView):
         except Exception as e:
             log_auth_event(user, 'mfa_disable', request, success=False, details={'error': str(e)})
             return Response({'error': 'Failed to disable MFA'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class MFABackupCodesView(views.APIView):
+    """Manage MFA backup codes - view current codes and regenerate new ones"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """Get current backup codes for the user"""
+        user = request.user
+        
+        if not user.mfa_enrolled:
+            return Response({
+                'error': 'MFA not enabled',
+                'message': 'Multi-factor authentication must be enabled before accessing backup codes',
+                'backup_codes': [],
+                'count': 0
+            }, status=status.HTTP_200_OK)
+        
+        try:
+            # Get user's unused backup codes from the database
+            backup_codes = user.backup_codes.filter(used=False).values_list('code', flat=True)
+            if not backup_codes:
+                # Generate initial backup codes if none exist
+                backup_codes = generate_backup_codes(user)
+            
+            log_auth_event(user, 'backup_codes_viewed', request, success=True)
+            
+            return Response({
+                'backup_codes': list(backup_codes),
+                'count': len(backup_codes)
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error retrieving backup codes for user {user.email}: {str(e)}")
+            log_auth_event(user, 'backup_codes_viewed', request, success=False, details={'error': str(e)})
+            return Response({'error': 'Failed to retrieve backup codes'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def post(self, request):
+        """Regenerate backup codes"""
+        user = request.user
+        
+        if not user.mfa_enrolled:
+            return Response({'error': 'MFA not enabled'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Delete existing unused backup codes
+            user.backup_codes.filter(used=False).delete()
+            
+            # Generate new backup codes
+            new_backup_codes = generate_backup_codes(user)
+            
+            log_auth_event(user, 'backup_codes_regenerated', request, success=True)
+            
+            return Response({
+                'message': 'Backup codes regenerated successfully',
+                'backup_codes': new_backup_codes,
+                'count': len(new_backup_codes)
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error regenerating backup codes for user {user.email}: {str(e)}")
+            log_auth_event(user, 'backup_codes_regenerated', request, success=False, details={'error': str(e)})
+            return Response({'error': 'Failed to regenerate backup codes'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class MFAStatusView(views.APIView):
+    """Get current MFA status and settings for the user"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """Get comprehensive MFA status"""
+        user = request.user
+        
+        try:
+            # Check for active TOTP devices
+            totp_devices = TOTPDevice.objects.filter(user=user, confirmed=True)
+            unused_backup_codes = user.backup_codes.filter(used=False)
+            
+            status_data = {
+                'is_mfa_enabled': user.mfa_enrolled,
+                'has_totp_device': totp_devices.exists(),
+                'totp_device_count': totp_devices.count(),
+                'has_backup_codes': unused_backup_codes.exists(),
+                'backup_codes_count': unused_backup_codes.count(),
+                'enrollment_date': totp_devices.first().created_at if totp_devices.exists() else None,
+            }
+            
+            return Response(status_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error getting MFA status for user {user.email}: {str(e)}")
+            return Response({'error': 'Failed to get MFA status'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class UserRegistrationView(views.APIView):

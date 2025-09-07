@@ -30,7 +30,7 @@ const loginSchema = yup.object({
 const mfaSchema = yup.object({
   code: yup
     .string()
-    .matches(/^\\d{6}$/, 'MFA code must be 6 digits')
+    .matches(/^\d{6}$/, 'MFA code must be 6 digits')
     .required('MFA code is required'),
 });
 
@@ -39,6 +39,7 @@ const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaToken, setMfaToken] = useState('');
+  const [formsReady, setFormsReady] = useState(false);
   
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const authError = useSelector(selectAuthError);
@@ -67,6 +68,8 @@ const LoginPage = () => {
     handleSubmit: handleMFASubmit,
     formState: { errors: mfaErrors },
     reset: resetMFA,
+    watch: watchMFA,
+    setValue: setMFAValue,
   } = useForm({
     resolver: yupResolver(mfaSchema),
     defaultValues: {
@@ -74,8 +77,33 @@ const LoginPage = () => {
     },
   });
 
-  // Redirect if already authenticated
+  const mfaCodeValue = watchMFA('code') || '';
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+
+  // Handle MFA code input formatting
+  const handleMFACodeChange = (e) => {
+    const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+    setMFAValue('code', value, { shouldValidate: true });
+  };
+
+  // Handle input focus
+  const handleInputFocus = () => {
+    setIsInputFocused(true);
+    setFocusedIndex(mfaCodeValue.length);
+  };
+
+  // Handle input blur
+  const handleInputBlur = () => {
+    setIsInputFocused(false);
+    setFocusedIndex(-1);
+  };
+
+  // Initialize forms and redirect if authenticated
   useEffect(() => {
+    // Mark forms as ready after initial render
+    setFormsReady(true);
+    
     if (isAuthenticated) {
       router.push('/dashboard');
     }
@@ -120,6 +148,18 @@ const LoginPage = () => {
     resetMFA();
   };
 
+  // Show loading until forms are ready
+  if (!formsReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (mfaRequired) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
@@ -141,21 +181,142 @@ const LoginPage = () => {
 
             <form onSubmit={handleMFASubmit(onMFASubmit)} className="space-y-6">
               <div>
-                <label htmlFor="code" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="code" className="block text-sm font-medium text-gray-700 mb-4 text-center">
                   Authentication Code
                 </label>
-                <input
-                  {...registerMFA('code')}
-                  type="text"
-                  id="code"
-                  placeholder="000000"
-                  maxLength={6}
-                  className={`w-full px-4 py-3 text-center text-lg tracking-widest border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${ 
-                    mfaErrors.code ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                />
+                
+                {/* Enhanced Visual Code Input Boxes with Focus States */}
+                <div className="relative mb-6">
+                  <div className="flex justify-center space-x-3 sm:space-x-4">
+                    {Array.from({ length: 6 }).map((_, index) => {
+                      const isCurrentFocus = isInputFocused && index === mfaCodeValue.length && index < 6;
+                      const isFilled = index < mfaCodeValue.length;
+                      const hasError = mfaErrors.code;
+                      
+                      return (
+                        <div
+                          key={index}
+                          className={`
+                            relative w-12 h-12 sm:w-14 sm:h-14 border-2 rounded-xl 
+                            flex items-center justify-center text-xl sm:text-2xl font-mono font-bold
+                            transition-all duration-300 ease-in-out transform
+                            ${hasError
+                              ? 'border-red-400 bg-red-50 text-red-700 shadow-red-100'
+                              : isFilled
+                              ? 'border-green-500 bg-green-50 text-green-800 shadow-green-100 scale-105'
+                              : isCurrentFocus
+                              ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-blue-200 ring-2 ring-blue-200 scale-105'
+                              : 'border-gray-300 bg-gray-50 text-gray-500 hover:border-gray-400 hover:bg-gray-100'
+                            }
+                            ${(isFilled || isCurrentFocus) ? 'shadow-lg' : 'shadow-sm'}
+                          `}
+                        >
+                          {/* Digit Display */}
+                          <span className={`
+                            transition-all duration-200
+                            ${isFilled ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}
+                          `}>
+                            {mfaCodeValue[index] || ''}
+                          </span>
+                          
+                          {/* Focus Indicator Cursor */}
+                          {isCurrentFocus && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <div className="w-0.5 h-6 bg-blue-500 animate-pulse rounded-full" />
+                            </div>
+                          )}
+                          
+                          {/* Success Check Animation */}
+                          {isFilled && !hasError && (
+                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                              <div className="w-2 h-1 bg-white rounded-full" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Enhanced Transparent Functional Input Field */}
+                  <input
+                    {...registerMFA('code')}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    id="code"
+                    placeholder=""
+                    maxLength={6}
+                    value={mfaCodeValue}
+                    onChange={handleMFACodeChange}
+                    onFocus={handleInputFocus}
+                    onBlur={handleInputBlur}
+                    autoFocus
+                    autoComplete="one-time-code"
+                    className="absolute inset-0 w-full h-full opacity-0 text-center text-2xl tracking-widest z-10 cursor-text"
+                    style={{ letterSpacing: '3rem' }}
+                  />
+                  
+                  {/* Progress Indicator */}
+                  <div className="mt-4 flex justify-center">
+                    <div className="flex space-x-1">
+                      {Array.from({ length: 6 }).map((_, index) => (
+                        <div
+                          key={index}
+                          className={`
+                            w-2 h-2 rounded-full transition-all duration-300
+                            ${index < mfaCodeValue.length
+                              ? 'bg-green-500 scale-110'
+                              : index === mfaCodeValue.length && isInputFocused
+                              ? 'bg-blue-500 animate-pulse'
+                              : 'bg-gray-300'
+                            }
+                          `}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Enhanced Instructions */}
+                <div className="text-center space-y-3">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <p className="text-sm text-blue-800 font-medium">
+                      📱 Enter the 6-digit code from your authenticator app
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      Code changes every 30 seconds
+                    </p>
+                  </div>
+                  
+                  {/* Live Status Indicator */}
+                  {mfaCodeValue.length > 0 && (
+                    <div className="flex items-center justify-center space-x-2 text-sm">
+                      <div className={`
+                        w-2 h-2 rounded-full
+                        ${mfaCodeValue.length === 6 
+                          ? 'bg-green-500 animate-pulse' 
+                          : 'bg-blue-500 animate-pulse'
+                        }
+                      `} />
+                      <span className={`
+                        font-medium
+                        ${mfaCodeValue.length === 6 ? 'text-green-700' : 'text-blue-700'}
+                      `}>
+                        {mfaCodeValue.length === 6 
+                          ? 'Ready to verify' 
+                          : `${mfaCodeValue.length} of 6 digits entered`
+                        }
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Enhanced Error Display */}
                 {mfaErrors.code && (
-                  <p className="mt-1 text-sm text-red-600">{mfaErrors.code.message}</p>
+                  <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-center">
+                    <p className="text-sm text-red-700 font-medium">❌ {mfaErrors.code.message}</p>
+                    <p className="text-xs text-red-600 mt-1">Please check your authenticator app and try again</p>
+                  </div>
                 )}
               </div>
 

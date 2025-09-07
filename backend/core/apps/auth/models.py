@@ -111,6 +111,7 @@ class UserProfile(models.Model):
     Attributes:
         user (User): One-to-one relationship with User model
         phone_number (str): User's phone number for contact or SMS MFA
+        bio (str): User's bio/about me section
         totp_enabled (bool): Legacy field for TOTP status (use User.mfa_enrolled instead)
         backup_codes_remaining (int): Number of unused backup codes remaining
         language (str): User's preferred language code
@@ -122,6 +123,7 @@ class UserProfile(models.Model):
     
     # Contact information
     phone_number = models.CharField(max_length=20, blank=True, help_text="User's contact phone number")
+    bio = models.TextField(max_length=500, blank=True, help_text="User's bio/about me section")
     
     # MFA Settings
     totp_enabled = models.BooleanField(default=False, help_text="Legacy TOTP status field")
