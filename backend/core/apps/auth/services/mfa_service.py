@@ -15,7 +15,7 @@ from django_otp import devices_for_user
 from django_otp.plugins.otp_totp.models import TOTPDevice
 from django.contrib.auth import get_user_model
 from ..models import BackupCode
-from ..utils import generate_backup_codes
+from ..utils.utils import generate_backup_codes
 
 logger = logging.getLogger(__name__)
 User = get_user_model()

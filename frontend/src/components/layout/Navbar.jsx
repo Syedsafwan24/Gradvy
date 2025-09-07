@@ -126,12 +126,12 @@ const Navbar = () => {
 							</div>
 						) : (
 							<>
-								<Link href="/auth/login">
+								<Link href="/login">
 									<Button variant='ghost' size='sm'>
 										Sign In
 									</Button>
 								</Link>
-								<Link href="/auth/register">
+								<Link href="/register">
 									<Button size='sm'>
 										Get Started
 									</Button>
@@ -210,12 +210,12 @@ const Navbar = () => {
 								</>
 							) : (
 								<>
-									<Link href="/auth/login" onClick={() => setIsOpen(false)}>
+									<Link href="/login" onClick={() => setIsOpen(false)}>
 										<Button variant='ghost' size='sm' className='w-full'>
 											Sign In
 										</Button>
 									</Link>
-									<Link href="/auth/register" onClick={() => setIsOpen(false)}>
+									<Link href="/register" onClick={() => setIsOpen(false)}>
 										<Button variant='gradient' size='sm' className='w-full'>
 											Get Started
 										</Button>

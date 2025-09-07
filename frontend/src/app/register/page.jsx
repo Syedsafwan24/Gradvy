@@ -8,11 +8,11 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, Mail, Lock, User, Loader2 } from 'lucide-react';
-import { useRegisterMutation } from '../../../store/api/authApi';
+import { useRegisterMutation } from '../../store/api/authApi';
 import { useSelector } from 'react-redux';
-import { selectIsAuthenticated } from '../../../store/slices/authSlice';
-import { Button } from '../../../components/ui/Button';
-import { Card } from '../../../components/ui/Card';
+import { selectIsAuthenticated } from '../../store/slices/authSlice';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 import toast from 'react-hot-toast';
 
 // Validation schema
@@ -330,7 +330,7 @@ const RegisterPage = () => {
             </div>
 
             {/* Sign In Link */}
-            <Link href="/auth/login">
+            <Link href="/login">
               <Button variant="outline" className="w-full">
                 Sign In Instead
               </Button>

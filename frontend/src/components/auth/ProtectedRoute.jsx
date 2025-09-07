@@ -6,7 +6,7 @@ import { useSelector } from 'react-redux';
 import { selectIsAuthenticated, selectAuthLoading } from '../../store/slices/authSlice';
 import { useGetProfileQuery } from '../../store/api/authApi';
 
-const ProtectedRoute = ({ children, redirectTo = '/auth/login' }) => {
+const ProtectedRoute = ({ children, redirectTo = '/login' }) => {
   const router = useRouter();
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const authLoading = useSelector(selectAuthLoading);

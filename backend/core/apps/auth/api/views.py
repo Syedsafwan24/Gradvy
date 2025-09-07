@@ -10,8 +10,8 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from axes.exceptions import AxesBackendPermissionDenied
 import logging
 from .serializers import *
-from .models import User, PasswordResetToken
-from .utils import log_auth_event, generate_backup_codes
+from ..models import User, PasswordResetToken
+from ..utils.utils import log_auth_event, generate_backup_codes
 import qrcode
 import base64
 from io import BytesIO
@@ -383,7 +383,7 @@ class UserRegistrationView(views.APIView):
 
 
 class PasswordResetView(views.APIView):
-    """Password reset request endpoint"""
+    """Password reset request endpoint - creates reset tokens"""
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -393,33 +393,38 @@ class PasswordResetView(views.APIView):
             email = serializer.validated_data['email']
             
             try:
-                user = User.objects.get(email=email, is_active=True)
+                user = User.objects.get(email=email)
+                
+                # Clean up any existing tokens for this user
+                PasswordResetToken.objects.filter(user=user).delete()
                 
                 # Generate secure token
                 token = self._generate_reset_token()
                 
-                # Create password reset token
+                # Create new reset token
                 reset_token = PasswordResetToken.objects.create(
                     user=user,
                     token=token,
-                    expires_at=timezone.now() + timedelta(hours=1)  # 1 hour expiry
+                    expires_at=timezone.now() + timedelta(hours=1)  # Token expires in 1 hour
                 )
                 
-                # In a real implementation, you would send an email here
-                # For now, we'll return the token in the response (ONLY for development)
+                # Log the reset request
+                log_auth_event(user, 'password_reset_requested', request, success=True)
                 
-                log_auth_event(user, 'password_reset_request', request, success=True)
-                
+                # TODO: Send email with token - for now return token for development
+                # In production, this would send an email with a link containing the token
                 return Response({
-                    'message': 'Password reset instructions have been sent to your email',
-                    'reset_token': token,  # Remove this in production
-                    'note': 'In production, this token would be sent via email only'
+                    'message': f'Password reset instructions have been sent to {email}',
+                    'token': token,  # Remove this in production - only for development testing
+                    'expires_at': reset_token.expires_at,
+                    'note': 'Email functionality will be implemented. Token provided for development testing.'
                 }, status=status.HTTP_200_OK)
                 
             except User.DoesNotExist:
-                # Still return success to prevent email enumeration
+                # Don't reveal if user exists - return same message
                 return Response({
-                    'message': 'Password reset instructions have been sent to your email',
+                    'message': f'Password reset instructions have been sent to {email}',
+                    'note': 'If this email exists in our system, you will receive reset instructions.'
                 }, status=status.HTTP_200_OK)
         
         return Response({
@@ -429,52 +434,51 @@ class PasswordResetView(views.APIView):
     
     def _generate_reset_token(self):
         """Generate a secure random token for password reset"""
+        # Generate a secure random token (64 characters)
         alphabet = string.ascii_letters + string.digits
         return ''.join(secrets.choice(alphabet) for _ in range(64))
 
 
 class PasswordResetConfirmView(views.APIView):
-    """Password reset confirmation endpoint"""
+    """Password reset confirmation endpoint - resets password using token"""
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
         serializer = PasswordResetConfirmSerializer(data=request.data)
         
         if serializer.is_valid():
-            token = serializer.validated_data['token']
+            token_obj = serializer.validated_data['token_obj']
             new_password = serializer.validated_data['new_password']
+            user = token_obj.user
             
             try:
-                reset_token = PasswordResetToken.objects.get(token=token)
-                
-                if not reset_token.is_valid():
-                    return Response({
-                        'message': 'Invalid or expired reset token'
-                    }, status=status.HTTP_400_BAD_REQUEST)
-                
-                # Reset the password
-                user = reset_token.user
+                # Update user password
                 user.set_password(new_password)
                 user.must_change_password = False
                 user.last_password_change = timezone.now()
                 user.save()
                 
                 # Mark token as used
-                reset_token.mark_as_used()
+                token_obj.mark_as_used()
                 
-                # Invalidate all user sessions by changing password
-                # This forces re-login on all devices
+                # Log successful password reset
+                log_auth_event(user, 'password_reset_confirmed', request, success=True)
                 
-                log_auth_event(user, 'password_reset_complete', request, success=True)
+                # Clean up any other reset tokens for this user
+                PasswordResetToken.objects.filter(user=user, used=False).delete()
                 
                 return Response({
-                    'message': 'Password has been reset successfully'
+                    'message': 'Password has been reset successfully. You can now login with your new password.',
+                    'success': True
                 }, status=status.HTTP_200_OK)
                 
-            except PasswordResetToken.DoesNotExist:
+            except Exception as e:
+                logger.error(f"Error resetting password for user {user.email}: {str(e)}")
+                log_auth_event(user, 'password_reset_confirmed', request, success=False, details={'error': str(e)})
                 return Response({
-                    'message': 'Invalid reset token'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                    'message': 'Failed to reset password. Please try again.',
+                    'errors': ['An unexpected error occurred']
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         return Response({
             'message': 'Password reset failed',

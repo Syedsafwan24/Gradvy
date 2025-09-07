@@ -24,7 +24,7 @@ const baseQueryWithReauth = async (args, api, extraOptions) => {
   if (result?.error?.status === 401) {
     console.log('Token expired, attempting refresh...');
     
-    // Try to refresh the token
+    // Try to get new token using refresh endpoint
     const refreshResult = await baseQuery(
       {
         url: 'refresh/',
@@ -43,6 +43,7 @@ const baseQueryWithReauth = async (args, api, extraOptions) => {
       result = await baseQuery(args, api, extraOptions);
     } else {
       // Refresh failed, logout user
+      console.log('Token refresh failed, logging out...');
       api.dispatch(logout());
     }
   }
@@ -50,34 +51,13 @@ const baseQueryWithReauth = async (args, api, extraOptions) => {
   return result;
 };
 
+// Define the auth API
 export const authApi = createApi({
   reducerPath: 'authApi',
   baseQuery: baseQueryWithReauth,
-  tagTypes: ['User'],
+  tagTypes: ['User', 'MFA'],
   endpoints: (builder) => ({
-    // User Registration
-    register: builder.mutation({
-      query: (userData) => ({
-        url: 'register/',
-        method: 'POST',
-        body: userData,
-      }),
-      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
-        try {
-          const { data } = await queryFulfilled;
-          // Transform backend response to match frontend expectations
-          dispatch(setCredentials({
-            user: data.user,
-            access: data.access,
-            refresh: data.refresh
-          }));
-        } catch (error) {
-          console.error('Registration failed:', error);
-        }
-      },
-    }),
-
-    // User Login
+    // Authentication endpoints
     login: builder.mutation({
       query: (credentials) => ({
         url: 'login/',
@@ -87,24 +67,93 @@ export const authApi = createApi({
       async onQueryStarted(arg, { dispatch, queryFulfilled }) {
         try {
           const { data } = await queryFulfilled;
-          if (data.mfa_required) {
-            // MFA required, don't set credentials yet
-            return data;
-          } else {
-            // Regular login successful - transform response
+          if (data.access && data.refresh) {
+            // Store tokens and user data
             dispatch(setCredentials({
               user: data.user,
-              access: data.access,
-              refresh: data.refresh
+              tokens: {
+                access: data.access,
+                refresh: data.refresh
+              }
             }));
           }
         } catch (error) {
           console.error('Login failed:', error);
         }
       },
+      invalidatesTags: ['User'],
     }),
 
-    // MFA Verification
+    register: builder.mutation({
+      query: (userData) => ({
+        url: 'register/',
+        method: 'POST',
+        body: userData,
+      }),
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          if (data.access && data.refresh) {
+            // Store tokens and user data after successful registration
+            dispatch(setCredentials({
+              user: data.user,
+              tokens: {
+                access: data.access,
+                refresh: data.refresh
+              }
+            }));
+          }
+        } catch (error) {
+          console.error('Registration failed:', error);
+        }
+      },
+      invalidatesTags: ['User'],
+    }),
+
+    logout: builder.mutation({
+      query: () => ({
+        url: 'logout/',
+        method: 'POST',
+      }),
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+        } catch (error) {
+          console.error('Logout error:', error);
+        } finally {
+          // Always clear credentials on logout attempt
+          dispatch(logout());
+        }
+      },
+      invalidatesTags: ['User', 'MFA'],
+    }),
+
+    // Password management endpoints
+    requestPasswordReset: builder.mutation({
+      query: (email) => ({
+        url: 'password/reset/',
+        method: 'POST',
+        body: { email },
+      }),
+    }),
+
+    confirmPasswordReset: builder.mutation({
+      query: (resetData) => ({
+        url: 'password/reset/confirm/',
+        method: 'POST',
+        body: resetData,
+      }),
+    }),
+
+    changePassword: builder.mutation({
+      query: (passwordData) => ({
+        url: 'password/change/',
+        method: 'POST',
+        body: passwordData,
+      }),
+    }),
+
+    // MFA endpoints
     verifyMFA: builder.mutation({
       query: ({ code, mfa_token }) => ({
         url: 'mfa/verify/',
@@ -114,113 +163,79 @@ export const authApi = createApi({
       async onQueryStarted(arg, { dispatch, queryFulfilled }) {
         try {
           const { data } = await queryFulfilled;
-          // Transform backend response for MFA verification
-          dispatch(setCredentials({
-            user: data.user,
-            access: data.access,
-            refresh: data.refresh
-          }));
+          if (data.access && data.refresh) {
+            // Store tokens and user data after successful MFA verification
+            dispatch(setCredentials({
+              user: data.user,
+              tokens: {
+                access: data.access,
+                refresh: data.refresh
+              }
+            }));
+          }
         } catch (error) {
           console.error('MFA verification failed:', error);
         }
       },
+      invalidatesTags: ['User', 'MFA'],
     }),
 
-    // User Logout
-    logout: builder.mutation({
+    enrollMFA: builder.mutation({
       query: () => ({
-        url: 'logout/',
+        url: 'mfa/enroll/',
         method: 'POST',
-        body: { refresh: '' }, // We'll handle the refresh token in onQueryStarted
       }),
-      async onQueryStarted(arg, { dispatch, queryFulfilled, getState }) {
-        // Get refresh token from state
-        const state = getState();
-        const refreshToken = state.auth.tokens?.refresh;
-        
-        try {
-          // If we have a refresh token, make the actual logout request
-          if (refreshToken) {
-            await fetch('http://localhost:8000/api/auth/logout/', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${state.auth.tokens?.access || ''}`,
-              },
-              credentials: 'include',
-              body: JSON.stringify({ refresh: refreshToken }),
-            });
-          }
-        } catch (error) {
-          console.log('Logout API failed, but clearing local state anyway:', error);
-        }
-        
-        // Always clear local state regardless of backend response
-        dispatch(logout());
-      },
-      transformResponse: (response, meta, arg) => {
-        // Backend returns empty response with 200 status, transform to success
-        return { success: true };
-      },
-      transformErrorResponse: (response, meta, arg) => {
-        // Even on error, we want to consider logout as successful locally
-        return { success: true };
-      },
+      invalidatesTags: ['User', 'MFA'],
     }),
 
-    // Get Current User Profile
+    disableMFA: builder.mutation({
+      query: (data) => ({
+        url: 'mfa/disable/',
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: ['User', 'MFA'],
+    }),
+
+    // User profile endpoints
     getProfile: builder.query({
       query: () => 'me/',
       providesTags: ['User'],
-      transformResponse: (response) => response.user || response,
     }),
 
-    // Password Reset Request
-    requestPasswordReset: builder.mutation({
-      query: (email) => ({
-        url: 'password/reset/',
-        method: 'POST',
-        body: { email },
+    updateProfile: builder.mutation({
+      query: (userData) => ({
+        url: 'me/',
+        method: 'PATCH',
+        body: userData,
       }),
+      invalidatesTags: ['User'],
     }),
 
-    // Change Password
-    changePassword: builder.mutation({
-      query: (passwordData) => ({
-        url: 'password/change/',
-        method: 'POST',
-        body: passwordData,
-      }),
-    }),
-
-    // Refresh Token
+    // Token refresh (handled automatically by baseQueryWithReauth)
     refreshToken: builder.mutation({
       query: () => ({
         url: 'refresh/',
         method: 'POST',
       }),
-      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
-        try {
-          const { data } = await queryFulfilled;
-          if (data.access) {
-            dispatch(setAccessToken(data.access));
-          }
-        } catch (error) {
-          console.error('Token refresh failed:', error);
-          dispatch(logout());
-        }
-      },
     }),
   }),
 });
 
+// Export hooks for usage in functional components
 export const {
-  useRegisterMutation,
   useLoginMutation,
-  useVerifyMFAMutation,
+  useRegisterMutation,
   useLogoutMutation,
-  useGetProfileQuery,
   useRequestPasswordResetMutation,
+  useConfirmPasswordResetMutation,
   useChangePasswordMutation,
+  useVerifyMFAMutation,
+  useEnrollMFAMutation,
+  useDisableMFAMutation,
+  useGetProfileQuery,
+  useUpdateProfileMutation,
   useRefreshTokenMutation,
 } = authApi;
+
+export default authApi;

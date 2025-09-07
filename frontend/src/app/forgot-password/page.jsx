@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -5,9 +7,9 @@ import * as yup from 'yup';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Mail, ArrowLeft, Loader2 } from 'lucide-react';
-import { useRequestPasswordResetMutation } from '../../../store/api/authApi';
-import { Button } from '../../../components/ui/Button';
-import { Card } from '../../../components/ui/Card';
+import { useRequestPasswordResetMutation } from '../../store/api/authApi';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 import toast from 'react-hot-toast';
 
 // Validation schema
@@ -37,8 +39,16 @@ const ForgotPasswordPage = () => {
 
   const onSubmit = async (data) => {
     try {
-      await requestReset(data.email).unwrap();
+      const result = await requestReset(data.email).unwrap();
       setIsSubmitted(true);
+      
+      // Log token for development testing
+      if (result.token) {
+        console.log('Password Reset Token (for development):', result.token);
+        console.log('Token expires at:', result.expires_at);
+        console.log('Use this token at: /reset-password?token=' + result.token);
+      }
+      
       toast.success('Password reset instructions sent!');
     } catch (error) {
       console.error('Password reset error:', error);
@@ -72,10 +82,10 @@ const ForgotPasswordPage = () => {
               {getValues('email')}
             </p>
             
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-              <p className="text-sm text-yellow-800">
-                <strong>Note:</strong> This is a placeholder feature. 
-                Email functionality will be implemented in future updates.
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <p className="text-sm text-blue-800">
+                <strong>Development Note:</strong> Check the browser console for the reset token. 
+                In production, you would receive an email with a reset link.
               </p>
             </div>
             
@@ -84,7 +94,7 @@ const ForgotPasswordPage = () => {
                 Didn't receive the email? Check your spam folder or contact support.
               </p>
               
-              <Link href="/auth/login">
+              <Link href="/login">
                 <Button variant="outline" className="w-full">
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back to Login
@@ -136,13 +146,6 @@ const ForgotPasswordPage = () => {
               )}
             </div>
 
-            {/* Placeholder Notice */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-blue-800">
-                <strong>Development Note:</strong> This feature is currently a placeholder. 
-                Email functionality will be implemented in future updates.
-              </p>
-            </div>
 
             {/* Submit Button */}
             <Button
@@ -163,7 +166,7 @@ const ForgotPasswordPage = () => {
             {/* Back to Login */}
             <div className="text-center">
               <Link
-                href="/auth/login"
+                href="/login"
                 className="text-sm text-blue-600 hover:text-blue-500 flex items-center justify-center"
               >
                 <ArrowLeft className="h-4 w-4 mr-1" />

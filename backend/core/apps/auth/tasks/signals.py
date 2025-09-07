@@ -1,7 +1,7 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
-from .models import UserProfile
+from ..models import UserProfile
 
 User = get_user_model()
 
@@ -26,7 +26,7 @@ def handle_user_status_change(sender, instance, **kwargs):
             if old_instance.is_active != instance.is_active:
                 if not instance.is_active:
                     # User deactivated - revoke sessions
-                    from .utils import revoke_user_sessions
+                    from ..utils.utils import revoke_user_sessions
                     revoke_user_sessions(instance)
         except User.DoesNotExist:
             pass  # New user

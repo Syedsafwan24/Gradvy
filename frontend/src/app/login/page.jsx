@@ -8,11 +8,11 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, Mail, Lock, Loader2 } from 'lucide-react';
-import { useLoginMutation, useVerifyMFAMutation } from '../../../store/api/authApi';
+import { useLoginMutation, useVerifyMFAMutation } from '../../store/api/authApi';
 import { useSelector } from 'react-redux';
-import { selectIsAuthenticated, selectAuthError } from '../../../store/slices/authSlice';
-import { Button } from '../../../components/ui/Button';
-import { Card } from '../../../components/ui/Card';
+import { selectIsAuthenticated, selectAuthError } from '../../store/slices/authSlice';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 import toast from 'react-hot-toast';
 
 // Validation schema
@@ -269,7 +269,7 @@ const LoginPage = () => {
                 </label>
               </div>
               <Link
-                href="/auth/forgot-password"
+                href="/forgot-password"
                 className="text-sm text-blue-600 hover:text-blue-500"
               >
                 Forgot password?
@@ -292,6 +292,13 @@ const LoginPage = () => {
               )}
             </Button>
 
+            {/* Forgot Password Link */}
+            <div className="text-center">
+              <Link href="/forgot-password" className="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                Forgot your password?
+              </Link>
+            </div>
+
             {/* Divider */}
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
@@ -303,7 +310,7 @@ const LoginPage = () => {
             </div>
 
             {/* Sign Up Link */}
-            <Link href="/auth/register">
+            <Link href="/register">
               <Button variant="outline" className="w-full">
                 Create Account
               </Button>

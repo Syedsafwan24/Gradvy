@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
 from rest_framework.validators import UniqueValidator
-from .models import User, UserProfile
+from ..models import User, UserProfile
 
 class UserSerializer(serializers.ModelSerializer):
     profile = serializers.SerializerMethodField()
@@ -103,14 +103,14 @@ class PasswordResetSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
     def validate_email(self, value):
-        if not User.objects.filter(email=value, is_active=True).exists():
-            raise serializers.ValidationError("No active user found with this email address.")
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("No user found with this email address.")
         return value
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
-    """Serializer for password reset confirmation"""
-    token = serializers.CharField()
+    """Serializer for password reset confirmation using token"""
+    token = serializers.CharField(max_length=255)
     new_password = serializers.CharField(
         write_only=True,
         validators=[validate_password]
@@ -120,4 +120,15 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
     def validate(self, attrs):
         if attrs['new_password'] != attrs['new_password_confirm']:
             raise serializers.ValidationError({"new_password": "Password fields didn't match."})
+        
+        # Validate token
+        from ..models import PasswordResetToken
+        try:
+            token_obj = PasswordResetToken.objects.get(token=attrs['token'])
+            if not token_obj.is_valid():
+                raise serializers.ValidationError({"token": "Token is expired or already used."})
+            attrs['token_obj'] = token_obj
+        except PasswordResetToken.DoesNotExist:
+            raise serializers.ValidationError({"token": "Invalid token."})
+        
         return attrs

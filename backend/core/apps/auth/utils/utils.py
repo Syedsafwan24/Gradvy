@@ -1,7 +1,7 @@
 import secrets
 import string
 import logging
-from .models import BackupCode
+from ..models import BackupCode
 
 logger = logging.getLogger(__name__)
 

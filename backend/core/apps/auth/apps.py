@@ -8,6 +8,6 @@ class AuthConfig(AppConfig):
 
     def ready(self):
         try:
-            import apps.auth.signals
+            import apps.auth.tasks.signals
         except ImportError:
             pass

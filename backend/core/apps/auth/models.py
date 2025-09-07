@@ -192,3 +192,64 @@ class BackupCode(models.Model):
         self.used_at = timezone.now()
         self.save(update_fields=['used', 'used_at'])
 
+
+class PasswordResetToken(models.Model):
+    """
+    Password reset tokens for secure password reset functionality.
+    
+    These tokens are generated when a user requests a password reset
+    and are used to verify the reset request.
+    
+    Attributes:
+        user (User): Foreign key to the User who requested the reset
+        token (str): Unique token for password reset
+        created_at (datetime): When the token was created
+        expires_at (datetime): When the token expires
+        used (bool): Whether this token has been used
+        used_at (datetime): When the token was used (if used)
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='password_reset_tokens')
+    token = models.CharField(max_length=255, unique=True, help_text="Unique password reset token")
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(help_text="When the token expires")
+    used = models.BooleanField(default=False, help_text="Whether this token has been used")
+    used_at = models.DateTimeField(null=True, blank=True, help_text="When the token was used")
+    
+    class Meta:
+        db_table = "accounts_password_reset_token"
+        verbose_name = "Password Reset Token"
+        verbose_name_plural = "Password Reset Tokens"
+        indexes = [
+            models.Index(fields=['user']),
+            models.Index(fields=['token']),
+            models.Index(fields=['expires_at']),
+        ]
+    
+    def __str__(self) -> str:
+        """Return string representation of the password reset token."""
+        status = "used" if self.used else ("expired" if self.is_expired() else "active")
+        return f"Password reset token for {self.user.email} ({status})"
+    
+    def is_expired(self) -> bool:
+        """Check if the token has expired."""
+        return timezone.now() > self.expires_at
+    
+    def is_valid(self) -> bool:
+        """Check if the token is valid (not used and not expired)."""
+        return not self.used and not self.is_expired()
+    
+    def mark_as_used(self) -> None:
+        """
+        Mark this token as used.
+        
+        Sets the used flag to True and records the current timestamp.
+        """
+        self.used = True
+        self.used_at = timezone.now()
+        self.save(update_fields=['used', 'used_at'])
+    
+    @classmethod
+    def cleanup_expired(cls):
+        """Remove expired tokens from the database."""
+        cls.objects.filter(expires_at__lt=timezone.now()).delete()
+
