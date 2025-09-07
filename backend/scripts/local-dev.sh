@@ -105,18 +105,111 @@ if ! python manage.py check --database default; then
     exit 1
 fi
 
+# Check Celery services
+print_status "Checking Celery services..."
+celery_worker_running=false
+celery_beat_running=false
+
+# Check if Celery worker is running
+if pgrep -f "celery.*worker" > /dev/null 2>&1; then
+    print_success "Celery worker is running"
+    celery_worker_running=true
+else
+    print_warning "Celery worker is not running!"
+    echo ""
+    echo "📋 Celery Worker provides:"
+    echo "   • Background task processing"
+    echo "   • Email sending"
+    echo "   • MFA cleanup tasks"
+    echo ""
+    
+    if ask_yes_no "Would you like to start Celery worker now?"; then
+        print_status "Starting Celery worker in background..."
+        echo ""
+        # Navigate back to backend root for celery script
+        cd ..
+        nohup ./scripts/local-celery.sh > celery-worker.log 2>&1 &
+        CELERY_WORKER_PID=$!
+        echo "Celery worker started (PID: $CELERY_WORKER_PID)"
+        echo "Log file: celery-worker.log"
+        celery_worker_running=true
+        # Navigate back to core directory
+        cd core
+        sleep 2  # Give worker time to start
+    else
+        print_warning "Continuing without Celery worker. Background tasks won't be processed."
+    fi
+fi
+
+# Check if Celery Beat is running
+if pgrep -f "celery.*beat" > /dev/null 2>&1; then
+    print_success "Celery Beat scheduler is running"
+    celery_beat_running=true
+else
+    print_warning "Celery Beat scheduler is not running!"
+    echo ""
+    echo "📋 Celery Beat provides:"
+    echo "   • Periodic task scheduling"
+    echo "   • Automated MFA data cleanup"
+    echo "   • Maintenance tasks"
+    echo ""
+    
+    if ask_yes_no "Would you like to start Celery Beat scheduler now?"; then
+        print_status "Starting Celery Beat scheduler in background..."
+        echo ""
+        # Navigate back to backend root for celery beat script
+        cd ..
+        nohup ./scripts/local-celery-beat.sh > celery-beat.log 2>&1 &
+        CELERY_BEAT_PID=$!
+        echo "Celery Beat scheduler started (PID: $CELERY_BEAT_PID)"
+        echo "Log file: celery-beat.log"
+        celery_beat_running=true
+        # Navigate back to core directory
+        cd core
+        sleep 2  # Give scheduler time to start
+    else
+        print_warning "Continuing without Celery Beat. Scheduled tasks won't run automatically."
+    fi
+fi
+
+echo ""
+
 print_success "Starting Django development server..."
 echo ""
 echo "🔧 Configuration:"
 echo "   • Database: PostgreSQL (Docker) -> localhost:5432"  
 echo "   • Redis: Redis (Docker) -> localhost:6380"
 echo "   • Django: Local development server"
+if [ "$celery_worker_running" = true ]; then
+    echo "   • Celery Worker: Running (background process)"
+else
+    echo "   • Celery Worker: Not running"
+fi
+if [ "$celery_beat_running" = true ]; then
+    echo "   • Celery Beat: Running (background scheduler)"
+else
+    echo "   • Celery Beat: Not running"
+fi
 echo ""
 echo "🌐 Access Points:"
 echo "   • Django: http://localhost:8000/"
 echo "   • Admin: http://localhost:8000/admin/"
 echo ""
-echo "⏹️  Press Ctrl+C to stop the server"
+if [ "$celery_worker_running" = true ] || [ "$celery_beat_running" = true ]; then
+    echo "📋 Celery Logs:"
+    if [ "$celery_worker_running" = true ]; then
+        echo "   • Worker: tail -f celery-worker.log"
+    fi
+    if [ "$celery_beat_running" = true ]; then
+        echo "   • Beat: tail -f celery-beat.log"
+    fi
+    echo ""
+fi
+echo "⏹️  Press Ctrl+C to stop the Django server"
+if [ "$celery_worker_running" = true ] || [ "$celery_beat_running" = true ]; then
+    echo "   Celery services will continue running in background"
+    echo "   To stop all: pkill -f celery"
+fi
 echo ""
 
 # Start Django development server
