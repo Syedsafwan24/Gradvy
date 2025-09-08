@@ -14,7 +14,7 @@ config = AutoConfig(search_path=BASE_DIR.parent)  # Look in backend/ directory f
 # Security
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='your-secret-key-here')
 DEBUG = config('DJANGO_DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = [h.strip() for h in str(config('DJANGO_ALLOWED_HOSTS', default='localhost,127.0.0.1')).split(',') if h.strip()]
+ALLOWED_HOSTS = [h.strip() for h in str(config('DJANGO_ALLOWED_HOSTS', default='localhost,127.0.0.1,testserver')).split(',') if h.strip()]
 
 # Application definition
 INSTALLED_APPS = [
@@ -70,15 +70,19 @@ AUTH_USER_MODEL = 'gradvy_auth.User'
 # Middleware
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
+    'core.middleware.SecurityHeadersMiddleware',  # Custom security headers
     'django.middleware.security.SecurityMiddleware',
+    'core.middleware.CookieSecurityMiddleware',  # Custom cookie security
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'core.middleware.SessionFingerprintMiddleware',  # Session security (after auth)
     'django_otp.middleware.OTPMiddleware',
-    'axes.middleware.AxesMiddleware',  # Re-enabled with proper handling
+    'axes.middleware.AxesMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'core.middleware.CookieConsentMiddleware',  # Cookie consent tracking
 ]
 
 ROOT_URLCONF = 'core.urls'
@@ -90,15 +94,31 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_HSTS_PRELOAD = not DEBUG
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# Cookie settings
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
-SESSION_COOKIE_SAMESITE = None
-CSRF_COOKIE_SAMESITE = None
-SESSION_COOKIE_SECURE = False # For development on HTTP
-CSRF_COOKIE_SECURE = False # For development on HTTP
-SESSION_COOKIE_HTTPONLY = True
-CSRF_COOKIE_HTTPONLY = False
+# Cookie settings - properly configured for security
+SESSION_COOKIE_SECURE = not DEBUG  # Only send over HTTPS in production
+CSRF_COOKIE_SECURE = not DEBUG     # Only send over HTTPS in production
+SESSION_COOKIE_HTTPONLY = True     # Prevent XSS attacks
+CSRF_COOKIE_HTTPONLY = False       # CSRF needs to be accessible to JS
+SESSION_COOKIE_SAMESITE = 'Lax'    # CSRF protection
+CSRF_COOKIE_SAMESITE = 'Lax'       # CSRF protection
+SESSION_COOKIE_AGE = 7 * 24 * 60 * 60  # 7 days session timeout
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False # Sessions persist across browser sessions
+SESSION_SAVE_EVERY_REQUEST = True  # Update session on every request
+SESSION_COOKIE_NAME = 'gradvy_sessionid'  # Custom session cookie name
+CSRF_COOKIE_NAME = 'gradvy_csrftoken'     # Custom CSRF cookie name
+
+# Additional security cookies
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+if not DEBUG:
+    CSRF_TRUSTED_ORIGINS.extend([
+        "https://your-production-domain.com",
+        "https://www.your-production-domain.com"
+    ])
 
 # CSRF & CORS
 CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=True, cast=bool)
@@ -108,17 +128,9 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
-# CSRF settings for development
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-]
-
-# For development, we can be more lenient with CSRF
-CSRF_COOKIE_HTTPONLY = False
-CSRF_USE_SESSIONS = False
+# Advanced CSRF settings
+CSRF_USE_SESSIONS = False  # Use cookies instead of sessions for CSRF tokens
+CSRF_FAILURE_VIEW = 'django.views.csrf.csrf_failure'
 
 # DRF Configuration
 REST_FRAMEWORK = {

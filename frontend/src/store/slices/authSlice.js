@@ -55,10 +55,19 @@ const authSlice = createSlice({
       state.user = null;
       state.tokens = {
         access: null,
-        refresh: null,
+        refresh: null, // Refresh token is now in httpOnly cookies
       };
       state.isAuthenticated = false;
       state.error = null;
+      
+      // Clear any auth-related cookies that can be cleared from JS
+      // Note: httpOnly cookies (refresh_token) will be cleared by the backend
+      try {
+        const { clearAuthCookies } = require('../../lib/cookieUtils');
+        clearAuthCookies();
+      } catch (error) {
+        console.warn('Failed to clear auth cookies:', error);
+      }
     },
     setLoading: (state, action) => {
       state.isLoading = action.payload;

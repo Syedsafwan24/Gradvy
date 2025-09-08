@@ -1,5 +1,4 @@
 from django.urls import path
-from rest_framework_simplejwt.views import TokenRefreshView
 from . import views
 
 app_name = 'accounts'
@@ -9,7 +8,7 @@ urlpatterns = [
     path('register/', views.UserRegistrationView.as_view(), name='register'),
     path('login/', views.LoginView.as_view(), name='login'),
     path('logout/', views.LogoutView.as_view(), name='logout'),
-    path('refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('refresh/', views.CookieTokenRefreshView.as_view(), name='token_refresh'),
     
     # Password management
     path('password/reset/', views.PasswordResetView.as_view(), name='password_reset'),
@@ -25,4 +24,13 @@ urlpatterns = [
     
     # User management
     path('me/', views.UserProfileView.as_view(), name='profile'),
+    
+    # CSRF token
+    path('csrf-token/', views.CSRFTokenView.as_view(), name='csrf_token'),
+    
+    # Session management
+    path('sessions/', views.UserSessionsView.as_view(), name='user_sessions'),
+    path('sessions/revoke/', views.RevokeSessionView.as_view(), name='revoke_session'),
+    path('sessions/revoke-all/', views.RevokeAllSessionsView.as_view(), name='revoke_all_sessions'),
+    path('sessions/activity/', views.SessionActivityView.as_view(), name='session_activity'),
 ]

@@ -1,49 +1,67 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { setCredentials, logout, setAccessToken, updateUser } from '../slices/authSlice';
+import { getCSRFToken } from '../../lib/cookieUtils';
 
-// Base query with automatic token handling
+// Base query with automatic token handling and CSRF protection
 const baseQuery = fetchBaseQuery({
   baseUrl: 'http://localhost:8000/api/auth/',
-  credentials: 'include', // Include cookies for refresh token
+  credentials: 'include', // Include cookies for refresh token and session
   prepareHeaders: (headers, { getState }) => {
-    // Get token from Redux state
+    // Get access token from Redux state (still stored in memory for security)
     const token = getState().auth.tokens?.access;
     if (token) {
       headers.set('authorization', `Bearer ${token}`);
     }
+    
+    // Add CSRF token for state-changing requests
+    const csrfToken = getCSRFToken();
+    if (csrfToken) {
+      headers.set('X-CSRFToken', csrfToken);
+    }
+    
     headers.set('Content-Type', 'application/json');
     return headers;
   },
 });
 
-// Enhanced base query with automatic token refresh
+// Enhanced base query with automatic token refresh using cookies
 const baseQueryWithReauth = async (args, api, extraOptions) => {
   let result = await baseQuery(args, api, extraOptions);
 
-  // If we get a 401, try to refresh the token
+  // If we get a 401, try to refresh the token using cookie-based refresh
   if (result?.error?.status === 401) {
-    console.log('Token expired, attempting refresh...');
+    console.log('Token expired, attempting refresh using cookies...');
     
-    // Try to get new token using refresh endpoint
-    const refreshResult = await baseQuery(
-      {
-        url: 'refresh/',
-        method: 'POST',
-      },
-      api,
-      extraOptions
-    );
+    // First, get a fresh CSRF token if needed
+    let refreshResult;
+    try {
+      // Try to get new token using cookie-based refresh endpoint
+      refreshResult = await baseQuery(
+        {
+          url: 'refresh/',
+          method: 'POST',
+          // No body needed - refresh token comes from httpOnly cookie
+        },
+        api,
+        extraOptions
+      );
 
-    if (refreshResult?.data) {
-      // Store the new token
-      const { access } = refreshResult.data;
-      api.dispatch(setAccessToken(access));
-      
-      // Retry the original query with new token
-      result = await baseQuery(args, api, extraOptions);
-    } else {
-      // Refresh failed, logout user
-      console.log('Token refresh failed, logging out...');
+      if (refreshResult?.data?.access) {
+        // Store the new access token in Redux (not localStorage)
+        const { access } = refreshResult.data;
+        api.dispatch(setAccessToken(access));
+        
+        console.log('Token refreshed successfully');
+        
+        // Retry the original query with new token
+        result = await baseQuery(args, api, extraOptions);
+      } else {
+        // Refresh failed, logout user
+        console.log('Token refresh failed, logging out user...');
+        api.dispatch(logout());
+      }
+    } catch (error) {
+      console.error('Token refresh error:', error);
       api.dispatch(logout());
     }
   }
@@ -292,6 +310,16 @@ export const authApi = createApi({
         method: 'POST',
       }),
     }),
+
+    // CSRF token endpoint
+    getCSRFToken: builder.query({
+      query: () => ({
+        url: 'csrf-token/',
+        method: 'GET',
+      }),
+      // Don't cache CSRF tokens
+      keepUnusedDataFor: 0,
+    }),
   }),
 });
 
@@ -313,6 +341,7 @@ export const {
   useGetProfileQuery,
   useUpdateProfileMutation,
   useRefreshTokenMutation,
+  useGetCSRFTokenQuery,
 } = authApi;
 
 export default authApi;

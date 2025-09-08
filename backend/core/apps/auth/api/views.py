@@ -1,17 +1,19 @@
 from rest_framework import status, views, permissions
 from rest_framework.response import Response
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django_otp import devices_for_user
 from django_otp.plugins.otp_totp.models import TOTPDevice
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.utils.decorators import method_decorator
+from django.middleware.csrf import get_token
 from django.core.exceptions import PermissionDenied, ValidationError
 from axes.exceptions import AxesBackendPermissionDenied
 import logging
 from .serializers import *
-from ..models import User, PasswordResetToken
+from ..models import User, PasswordResetToken, UserSession, AuthEvent
 from ..utils.utils import log_auth_event, generate_backup_codes
+from ..utils.device_detection import get_session_info
 import qrcode
 import base64
 from io import BytesIO
@@ -358,18 +360,116 @@ class MFAEnrollmentView(views.APIView):
                       status=status.HTTP_400_BAD_REQUEST)
 
 @method_decorator(csrf_exempt, name='dispatch')
+class CookieTokenRefreshView(views.APIView):
+    """
+    Custom token refresh view that uses httpOnly cookies instead of request body
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        try:
+            # Get refresh token from httpOnly cookie
+            refresh_token_str = request.COOKIES.get('refresh_token')
+            
+            if not refresh_token_str:
+                return Response({
+                    'detail': 'Refresh token not found in cookies',
+                    'error_code': 'NO_REFRESH_TOKEN'
+                }, status=status.HTTP_401_UNAUTHORIZED)
+            
+            try:
+                # Validate and refresh the token
+                refresh_token = RefreshToken(refresh_token_str)
+                new_access_token = str(refresh_token.access_token)
+                
+                # Check if token rotation is enabled (it is by default in settings)
+                if getattr(settings, 'SIMPLE_JWT', {}).get('ROTATE_REFRESH_TOKENS', False):
+                    # Generate new refresh token
+                    new_refresh_token = str(refresh_token)
+                    refresh_token.blacklist()  # Blacklist the old token
+                    
+                    response_data = {
+                        'access': new_access_token,
+                        'message': 'Token refreshed successfully'
+                    }
+                    
+                    response = Response(response_data, status=status.HTTP_200_OK)
+                    
+                    # Set new refresh token as httpOnly cookie
+                    response.set_cookie(
+                        'refresh_token',
+                        new_refresh_token,
+                        max_age=7 * 24 * 60 * 60,  # 7 days
+                        httponly=True,
+                        secure=not settings.DEBUG,
+                        samesite='Lax'
+                    )
+                else:
+                    # No token rotation, just return new access token
+                    response_data = {
+                        'access': new_access_token,
+                        'message': 'Token refreshed successfully'
+                    }
+                    response = Response(response_data, status=status.HTTP_200_OK)
+                
+                return response
+                
+            except TokenError as e:
+                return Response({
+                    'detail': 'Invalid or expired refresh token',
+                    'error_code': 'INVALID_REFRESH_TOKEN'
+                }, status=status.HTTP_401_UNAUTHORIZED)
+                
+        except Exception as e:
+            logger.error(f"Token refresh error: {str(e)}")
+            return Response({
+                'detail': 'Token refresh failed',
+                'error_code': 'REFRESH_ERROR'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
 class LogoutView(views.APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def post(self, request):
         try:
-            refresh_token = request.data["refresh"]
-            token = RefreshToken(refresh_token)
-            token.blacklist()
+            # Try to get refresh token from cookie first, then from request data
+            refresh_token_str = request.COOKIES.get('refresh_token')
+            if not refresh_token_str:
+                refresh_token_str = request.data.get("refresh")
+            
+            if refresh_token_str:
+                token = RefreshToken(refresh_token_str)
+                token.blacklist()
+            
             log_auth_event(request.user, 'logout', request, success=True)
-            return Response(status=status.HTTP_200_OK)
+            
+            # Create response and clear authentication cookies
+            response = Response({
+                'message': 'Logout successful'
+            }, status=status.HTTP_200_OK)
+            
+            # Clear authentication cookies
+            response.delete_cookie('refresh_token')
+            response.delete_cookie('gradvy_sessionid')
+            response.delete_cookie('gradvy_csrftoken')
+            
+            return response
+            
         except Exception as e:
-            return Response(status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"Logout error: {str(e)}")
+            # Even if token blacklisting fails, clear cookies and return success
+            response = Response({
+                'message': 'Logout completed'
+            }, status=status.HTTP_200_OK)
+            
+            # Clear authentication cookies
+            response.delete_cookie('refresh_token')
+            response.delete_cookie('gradvy_sessionid')
+            response.delete_cookie('gradvy_csrftoken')
+            
+            return response
 
 @method_decorator(csrf_exempt, name='dispatch')
 class MFADisableView(views.APIView):
@@ -650,3 +750,231 @@ class PasswordResetConfirmView(views.APIView):
             'message': 'Password reset failed',
             'errors': serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@method_decorator(ensure_csrf_cookie, name='dispatch')
+class CSRFTokenView(views.APIView):
+    """
+    Endpoint to get CSRF token for frontend applications
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        """Return CSRF token"""
+        # The @ensure_csrf_cookie decorator ensures the CSRF cookie is set
+        csrf_token = get_token(request)
+        return Response({
+            'csrf_token': csrf_token,
+            'message': 'CSRF token generated successfully'
+        }, status=status.HTTP_200_OK)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class UserSessionsView(views.APIView):
+    """
+    View and manage user sessions
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """List all active sessions for the current user"""
+        try:
+            sessions = UserSession.objects.filter(
+                user=request.user,
+                is_active=True
+            ).order_by('-last_activity')
+            
+            sessions_data = []
+            current_session_id = None
+            
+            # Try to identify current session
+            current_ip = get_session_info(request)['ip_address']
+            current_user_agent = request.META.get('HTTP_USER_AGENT', '')
+            
+            for session in sessions:
+                # Check if this might be the current session
+                is_current = (
+                    session.ip_address == current_ip and 
+                    session.user_agent == current_user_agent and
+                    not session.is_expired()
+                )
+                
+                if is_current:
+                    current_session_id = session.session_id
+                    session.is_current = True
+                    session.save(update_fields=['is_current'])
+                
+                sessions_data.append({
+                    'session_id': session.session_id,
+                    'device_name': session.get_device_name(),
+                    'location': session.get_location_name(),
+                    'ip_address': session.ip_address,
+                    'created_at': session.created_at,
+                    'last_activity': session.last_activity,
+                    'expires_at': session.expires_at,
+                    'is_current': is_current,
+                    'is_expired': session.is_expired()
+                })
+            
+            return Response({
+                'sessions': sessions_data,
+                'current_session_id': current_session_id,
+                'total_count': len(sessions_data)
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error retrieving sessions for user {request.user.email}: {str(e)}")
+            return Response({
+                'error': 'Failed to retrieve sessions'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@method_decorator(csrf_exempt, name='dispatch') 
+class RevokeSessionView(views.APIView):
+    """
+    Revoke a specific session
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """Revoke a session by ID"""
+        session_id = request.data.get('session_id')
+        
+        if not session_id:
+            return Response({
+                'error': 'Session ID is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            session = UserSession.objects.get(
+                session_id=session_id,
+                user=request.user,
+                is_active=True
+            )
+            
+            # Revoke the session
+            session.revoke(revoked_by='user')
+            
+            # Log the session revocation
+            log_auth_event(
+                request.user, 
+                'session_revoked', 
+                request, 
+                success=True,
+                details={'session_id': session_id, 'revoked_session_ip': session.ip_address}
+            )
+            
+            # If user revoked their current session, they should be logged out
+            is_current_session = session.is_current
+            
+            return Response({
+                'message': 'Session revoked successfully',
+                'revoked_current_session': is_current_session
+            }, status=status.HTTP_200_OK)
+            
+        except UserSession.DoesNotExist:
+            return Response({
+                'error': 'Session not found or already revoked'
+            }, status=status.HTTP_404_NOT_FOUND)
+            
+        except Exception as e:
+            logger.error(f"Error revoking session {session_id} for user {request.user.email}: {str(e)}")
+            return Response({
+                'error': 'Failed to revoke session'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class RevokeAllSessionsView(views.APIView):
+    """
+    Revoke all sessions except current one
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """Revoke all sessions except the current one"""
+        try:
+            # Get current session info to avoid revoking current session
+            current_session_info = get_session_info(request)
+            current_ip = current_session_info['ip_address']
+            current_user_agent = request.META.get('HTTP_USER_AGENT', '')
+            
+            # Find all active sessions except potential current one
+            sessions_to_revoke = UserSession.objects.filter(
+                user=request.user,
+                is_active=True
+            ).exclude(
+                ip_address=current_ip,
+                user_agent=current_user_agent
+            )
+            
+            revoked_count = sessions_to_revoke.count()
+            
+            # Revoke all sessions
+            for session in sessions_to_revoke:
+                session.revoke(revoked_by='user')
+            
+            # Log the bulk session revocation
+            log_auth_event(
+                request.user, 
+                'session_revoked', 
+                request, 
+                success=True,
+                details={'action': 'revoke_all', 'revoked_count': revoked_count}
+            )
+            
+            return Response({
+                'message': f'Successfully revoked {revoked_count} sessions',
+                'revoked_count': revoked_count
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error revoking all sessions for user {request.user.email}: {str(e)}")
+            return Response({
+                'error': 'Failed to revoke sessions'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class SessionActivityView(views.APIView):
+    """
+    View authentication events and session activity
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """Get recent authentication events for the user"""
+        try:
+            # Get query parameters
+            limit = min(int(request.GET.get('limit', 50)), 100)  # Max 100
+            event_type = request.GET.get('event_type')
+            
+            # Build query
+            events_query = AuthEvent.objects.filter(user=request.user)
+            
+            if event_type:
+                events_query = events_query.filter(event_type=event_type)
+            
+            events = events_query.order_by('-created_at')[:limit]
+            
+            events_data = []
+            for event in events:
+                events_data.append({
+                    'event_type': event.event_type,
+                    'event_type_display': event.get_event_type_display(),
+                    'success': event.success,
+                    'ip_address': event.ip_address,
+                    'created_at': event.created_at,
+                    'details': event.details
+                })
+            
+            return Response({
+                'events': events_data,
+                'total_count': len(events_data)
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error retrieving session activity for user {request.user.email}: {str(e)}")
+            return Response({
+                'error': 'Failed to retrieve session activity'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

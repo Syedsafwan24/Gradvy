@@ -437,36 +437,46 @@ curl -X POST http://localhost:8000/api/auth/mfa/disable/ \
 ### JavaScript/TypeScript
 
 ```javascript
-// Example using axios
+// Example using axios with secure cookie-based authentication
 const api = axios.create({
   baseURL: 'http://localhost:8000/api/auth/',
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // Include cookies for secure authentication
 });
 
-// Add token to requests
+// Add CSRF token to requests (automatically retrieved from cookies)
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  // CSRF token is automatically included from httpOnly cookies
+  // Access tokens are handled by Redux/RTK Query in memory
+  // No localStorage token handling needed
   return config;
 });
 
-// Login function
+// Login function - tokens are now stored in secure httpOnly cookies
 async function login(email, password) {
   const response = await api.post('login/', { email, password });
   if (response.data.mfa_required) {
     // Handle MFA flow
     return { mfa_required: true, mfa_token: response.data.mfa_token };
   }
-  // Store tokens
-  localStorage.setItem('access_token', response.data.access);
-  localStorage.setItem('refresh_token', response.data.refresh);
+  // Tokens are automatically stored in httpOnly cookies by the backend
+  // Access token stored in memory only, refresh token in httpOnly cookie
   return response.data;
 }
 ```
+
+## 🔐 Security Implementation
+
+**Important**: This API now uses secure httpOnly cookies for token storage instead of localStorage:
+
+- **Access tokens**: Stored in memory only (Redux state)
+- **Refresh tokens**: Stored in secure httpOnly cookies
+- **CSRF tokens**: Automatically handled via cookies
+- **Session data**: Tracked with device fingerprinting
+
+This approach prevents XSS attacks on authentication tokens while maintaining seamless user experience.
 
 ### Python
 

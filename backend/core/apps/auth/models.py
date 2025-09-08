@@ -255,3 +255,202 @@ class PasswordResetToken(models.Model):
         """Remove expired tokens from the database."""
         cls.objects.filter(expires_at__lt=timezone.now()).delete()
 
+
+class UserSession(models.Model):
+    """
+    Track user sessions for security and management purposes.
+    
+    This model tracks active user sessions to provide session management
+    functionality and security monitoring.
+    
+    Attributes:
+        user (User): Foreign key to the User who owns this session
+        session_id (str): Unique session identifier
+        session_key (str): Django session key (if applicable)
+        jwt_jti (str): JWT token ID for tracking JWT tokens
+        ip_address (str): IP address from which the session was created
+        user_agent (str): User agent string from the browser
+        device_info (dict): Parsed device information
+        location_info (dict): Location information (if available)
+        created_at (datetime): When the session was created
+        last_activity (datetime): When the session was last active
+        expires_at (datetime): When the session expires
+        is_active (bool): Whether the session is currently active
+        is_current (bool): Whether this is the current session
+        revoked_at (datetime): When the session was revoked (if revoked)
+        revoked_by (str): Who revoked the session ('user', 'admin', 'system')
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sessions')
+    session_id = models.CharField(max_length=255, unique=True, help_text="Unique session identifier")
+    session_key = models.CharField(max_length=40, null=True, blank=True, help_text="Django session key")
+    jwt_jti = models.CharField(max_length=255, null=True, blank=True, help_text="JWT token ID")
+    
+    # Session metadata
+    ip_address = models.GenericIPAddressField(help_text="IP address from which session was created")
+    user_agent = models.TextField(help_text="User agent string from browser")
+    device_info = models.JSONField(default=dict, blank=True, help_text="Parsed device information")
+    location_info = models.JSONField(default=dict, blank=True, help_text="Location information")
+    
+    # Session tracking
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_activity = models.DateTimeField(auto_now=True)
+    expires_at = models.DateTimeField(help_text="When the session expires")
+    
+    # Session status
+    is_active = models.BooleanField(default=True, help_text="Whether the session is currently active")
+    is_current = models.BooleanField(default=False, help_text="Whether this is the current session")
+    revoked_at = models.DateTimeField(null=True, blank=True, help_text="When the session was revoked")
+    revoked_by = models.CharField(max_length=50, null=True, blank=True, help_text="Who revoked the session")
+    
+    class Meta:
+        db_table = "accounts_user_session"
+        verbose_name = "User Session"
+        verbose_name_plural = "User Sessions"
+        ordering = ['-last_activity']
+        indexes = [
+            models.Index(fields=['user', 'is_active']),
+            models.Index(fields=['session_key']),
+            models.Index(fields=['jwt_jti']),
+            models.Index(fields=['expires_at']),
+        ]
+    
+    def __str__(self) -> str:
+        """Return string representation of the user session."""
+        return f"Session for {self.user.email} from {self.ip_address}"
+    
+    def is_expired(self) -> bool:
+        """Check if the session has expired."""
+        return timezone.now() > self.expires_at
+    
+    def revoke(self, revoked_by: str = 'user') -> None:
+        """
+        Revoke the session.
+        
+        Args:
+            revoked_by: Who is revoking the session ('user', 'admin', 'system')
+        """
+        self.is_active = False
+        self.revoked_at = timezone.now()
+        self.revoked_by = revoked_by
+        self.save(update_fields=['is_active', 'revoked_at', 'revoked_by'])
+    
+    def get_device_name(self) -> str:
+        """Get a human-readable device name."""
+        device_info = self.device_info
+        if not device_info:
+            return "Unknown Device"
+        
+        device_type = device_info.get('device_type', 'Unknown')
+        browser = device_info.get('browser', 'Unknown Browser')
+        os = device_info.get('os', 'Unknown OS')
+        
+        return f"{device_type} - {browser} on {os}"
+    
+    def get_location_name(self) -> str:
+        """Get a human-readable location."""
+        location = self.location_info
+        if not location:
+            return "Unknown Location"
+        
+        city = location.get('city', '')
+        country = location.get('country', '')
+        
+        if city and country:
+            return f"{city}, {country}"
+        elif country:
+            return country
+        else:
+            return "Unknown Location"
+    
+    def update_activity(self) -> None:
+        """Update last activity timestamp."""
+        self.last_activity = timezone.now()
+        self.save(update_fields=['last_activity'])
+    
+    @classmethod
+    def cleanup_expired_sessions(cls) -> int:
+        """Clean up expired sessions and return count of cleaned sessions."""
+        from datetime import timedelta
+        
+        expired_sessions = cls.objects.filter(
+            is_active=True,
+            expires_at__lt=timezone.now()
+        )
+        count = expired_sessions.count()
+        expired_sessions.update(
+            is_active=False,
+            revoked_at=timezone.now(),
+            revoked_by='system'
+        )
+        return count
+
+
+class AuthEvent(models.Model):
+    """
+    Track authentication events for security monitoring.
+    
+    This model logs various authentication-related events for security
+    monitoring and audit purposes.
+    
+    Attributes:
+        user (User): Foreign key to the User (if applicable)
+        event_type (str): Type of authentication event
+        success (bool): Whether the event was successful
+        ip_address (str): IP address from which the event occurred
+        user_agent (str): User agent string from the browser
+        details (dict): Additional event details
+        created_at (datetime): When the event occurred
+    """
+    EVENT_TYPES = (
+        ('login_success', 'Login Success'),
+        ('login_failed', 'Login Failed'),
+        ('login_mfa_required', 'Login - MFA Required'),
+        ('logout', 'Logout'),
+        ('register', 'Registration'),
+        ('password_change', 'Password Change'),
+        ('password_reset_requested', 'Password Reset Requested'),
+        ('password_reset_confirmed', 'Password Reset Confirmed'),
+        ('mfa_enroll', 'MFA Enrolled'),
+        ('mfa_verify', 'MFA Verification'),
+        ('mfa_disable', 'MFA Disabled'),
+        ('backup_codes_viewed', 'Backup Codes Viewed'),
+        ('backup_codes_regenerated', 'Backup Codes Regenerated'),
+        ('profile_updated', 'Profile Updated'),
+        ('profile_update_failed', 'Profile Update Failed'),
+        ('session_revoked', 'Session Revoked'),
+        ('session_created', 'Session Created'),
+    )
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='auth_events', 
+                           null=True, blank=True, help_text="User associated with the event")
+    event_type = models.CharField(max_length=50, choices=EVENT_TYPES, help_text="Type of authentication event")
+    success = models.BooleanField(help_text="Whether the event was successful")
+    
+    # Request metadata
+    ip_address = models.GenericIPAddressField(help_text="IP address from which event occurred")
+    user_agent = models.TextField(blank=True, help_text="User agent string from browser")
+    
+    # Additional event details
+    details = models.JSONField(default=dict, blank=True, help_text="Additional event details")
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = "accounts_auth_event"
+        verbose_name = "Authentication Event"
+        verbose_name_plural = "Authentication Events"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'event_type']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['ip_address']),
+            models.Index(fields=['event_type', 'success']),
+        ]
+    
+    def __str__(self) -> str:
+        """Return string representation of the authentication event."""
+        user_email = self.user.email if self.user else 'Anonymous'
+        status = "Success" if self.success else "Failed"
+        return f"{self.get_event_type_display()} - {user_email} ({status})"
+

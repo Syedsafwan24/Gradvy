@@ -19,16 +19,17 @@ const createNoopStorage = () => {
   };
 };
 
-// Use noop storage on server, localStorage on client
+// Use noop storage on server, localStorage on client for non-sensitive data only
 const storage = typeof window !== 'undefined' 
   ? createWebStorage('local') 
   : createNoopStorage();
 
 // Redux Persist Configuration
+// Note: Removed tokens from persistence for security - tokens now stored in httpOnly cookies
 const persistConfig = {
   key: 'auth',
   storage,
-  whitelist: ['user', 'isAuthenticated', 'tokens'], // Only persist these fields
+  whitelist: ['user', 'isAuthenticated'], // Persist user data and auth status, NOT tokens
 };
 
 const persistedAuthReducer = persistReducer(persistConfig, authReducer);

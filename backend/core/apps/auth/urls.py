@@ -1,26 +1,11 @@
-from django.urls import path
-from rest_framework_simplejwt.views import TokenRefreshView
-from . import views
+# Redirect to API URLs - this file is kept for backwards compatibility
+# All auth URLs are now in api/urls.py with enhanced functionality
+
+from django.urls import path, include
 
 app_name = 'accounts'
 
 urlpatterns = [
-    # Authentication
-    path('register/', views.UserRegistrationView.as_view(), name='register'),
-    path('login/', views.LoginView.as_view(), name='login'),
-    path('logout/', views.LogoutView.as_view(), name='logout'),
-    path('refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    
-    # Password management
-    path('password/reset/', views.PasswordResetView.as_view(), name='password_reset'),
-    path('password/reset/confirm/', views.PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
-    path('password/change/', views.PasswordChangeView.as_view(), name='password_change'),
-    
-    # MFA
-    path('mfa/verify/', views.MFAVerifyView.as_view(), name='mfa_verify'),
-    path('mfa/enroll/', views.MFAEnrollmentView.as_view(), name='mfa_enroll'),
-    path('mfa/disable/', views.MFADisableView.as_view(), name='mfa_disable'),
-    
-    # User management
-    path('me/', views.UserProfileView.as_view(), name='profile'),
+    # Redirect all auth routes to the api module
+    path('', include('apps.auth.api.urls')),
 ]
