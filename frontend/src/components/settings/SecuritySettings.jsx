@@ -84,7 +84,7 @@ const SecuritySettings = ({ user }) => {
         <p className="text-gray-600">Protect your account with strong security measures</p>
       </div>
 
-      {/* Two-Factor Authentication Section */}
+      Two-Factor Authentication Section
       <div className="border-b pb-8">
         <div className="flex items-center justify-between mb-6">
           <div>

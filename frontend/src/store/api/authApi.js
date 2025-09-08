@@ -1,5 +1,5 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
-import { setCredentials, logout, setAccessToken } from '../slices/authSlice';
+import { setCredentials, logout, setAccessToken, updateUser } from '../slices/authSlice';
 
 // Base query with automatic token handling
 const baseQuery = fetchBaseQuery({
@@ -151,6 +151,16 @@ export const authApi = createApi({
         method: 'POST',
         body: passwordData,
       }),
+      async onQueryStarted(passwordData, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          // Update last password change timestamp if available from response
+          // Backend doesn't return user data, so we just ensure cache consistency
+        } catch (error) {
+          console.error('Password change failed:', error);
+        }
+      },
+      invalidatesTags: ['User'],
     }),
 
     // MFA endpoints
@@ -194,6 +204,15 @@ export const authApi = createApi({
         method: 'PUT',
         body: { device_id, code },
       }),
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          // Update user's MFA status in Redux immediately
+          dispatch(updateUser({ is_mfa_enabled: true, mfa_enrolled: true }));
+        } catch (error) {
+          console.error('MFA enrollment failed:', error);
+        }
+      },
       invalidatesTags: ['User', 'MFA'],
     }),
 
@@ -203,6 +222,15 @@ export const authApi = createApi({
         method: 'POST',
         body: data,
       }),
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          // Update user's MFA status in Redux immediately
+          dispatch(updateUser({ is_mfa_enabled: false, mfa_enrolled: false }));
+        } catch (error) {
+          console.error('MFA disable failed:', error);
+        }
+      },
       invalidatesTags: ['User', 'MFA'],
     }),
 
@@ -227,6 +255,15 @@ export const authApi = createApi({
     // User profile endpoints
     getProfile: builder.query({
       query: () => 'me/',
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          // Always sync fresh API data with Redux on every profile fetch
+          dispatch(updateUser(data));
+        } catch (error) {
+          console.error('Profile fetch failed:', error);
+        }
+      },
       providesTags: ['User'],
     }),
 
@@ -236,6 +273,15 @@ export const authApi = createApi({
         method: 'PATCH',
         body: userData,
       }),
+      async onQueryStarted(userData, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          // Update Redux store with fresh user data
+          dispatch(updateUser(data));
+        } catch (error) {
+          console.error('Profile update failed:', error);
+        }
+      },
       invalidatesTags: ['User'],
     }),
 

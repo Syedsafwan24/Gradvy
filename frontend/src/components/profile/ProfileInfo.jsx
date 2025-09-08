@@ -32,8 +32,8 @@ const ProfileInfo = ({ user }) => {
       first_name: user.first_name || '',
       last_name: user.last_name || '',
       email: user.email || '',
-      phone: user.phone || '',
-      bio: user.bio || '',
+      phone: user.profile?.phone_number || '',
+      bio: user.profile?.bio || '',
     }
   });
 
@@ -43,8 +43,8 @@ const ProfileInfo = ({ user }) => {
       first_name: user.first_name || '',
       last_name: user.last_name || '',
       email: user.email || '',
-      phone: user.phone || '',
-      bio: user.bio || '',
+      phone: user.profile?.phone_number || '',
+      bio: user.profile?.bio || '',
     });
   };
 
@@ -224,7 +224,7 @@ const ProfileInfo = ({ user }) => {
               </div>
             ) : (
               <p className="py-2 px-3 bg-gray-50 rounded-lg text-gray-900">
-                {user.phone || 'Not specified'}
+                {user.profile?.phone_number || 'Not specified'}
               </p>
             )}
           </div>
@@ -253,7 +253,7 @@ const ProfileInfo = ({ user }) => {
             </div>
           ) : (
             <p className="py-2 px-3 bg-gray-50 rounded-lg text-gray-900 min-h-[100px]">
-              {user.bio || 'No bio added yet'}
+              {user.profile?.bio || 'No bio added yet'}
             </p>
           )}
         </div>
