@@ -1,7 +1,6 @@
 import './globals.css';
 import { Inter } from 'next/font/google';
-import Navbar from '../components/layout/Navbar';
-import Footer from '../components/layout/Footer';
+import AuthenticatedLayout from '../components/layout/AuthenticatedLayout';
 import ReduxProvider from '../providers/ReduxProvider';
 import { Toaster } from 'react-hot-toast';
 
@@ -53,11 +52,9 @@ export default function RootLayout({ children }) {
 		<html lang='en' className={inter.variable}>
 			<body className={`${inter.className} antialiased`}>
 				<ReduxProvider>
-					<div className='min-h-screen bg-slate-50 flex flex-col'>
-						<Navbar />
-						<main className='flex-1'>{children}</main>
-						<Footer />
-					</div>
+					<AuthenticatedLayout>
+						{children}
+					</AuthenticatedLayout>
 					<Toaster
 						position="top-right"
 						toastOptions={{

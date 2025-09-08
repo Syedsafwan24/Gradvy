@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings, Shield, Key, Download, Lock, LogOut, Trash2 } from 'lucide-react';
+import { Settings, Shield, Key, LogOut } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useLogoutMutation } from '../../store/api/authApi';
 import toast from 'react-hot-toast';
@@ -47,13 +47,6 @@ const ProfileActions = ({ user }) => {
       description: 'Update your account password for better security',
       action: () => router.push('/settings/security'),
       variant: 'outline'
-    },
-    {
-      icon: Download,
-      title: 'Export Data',
-      description: 'Download a copy of your account data and activity',
-      action: () => router.push('/settings/privacy'),
-      variant: 'outline'
     }
   ];
 
@@ -66,14 +59,6 @@ const ProfileActions = ({ user }) => {
       variant: 'outline',
       loading: isLoggingOut,
       disabled: isLoggingOut
-    },
-    {
-      icon: Trash2,
-      title: 'Delete Account',
-      description: 'Permanently delete your account and all data',
-      action: () => router.push('/settings/account'),
-      variant: 'destructive',
-      disabled: false
     }
   ];
 
