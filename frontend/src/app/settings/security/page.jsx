@@ -31,13 +31,16 @@ const SecurityPage = () => {
         </div>
 
         <div className="space-y-8">
-          {/* MFA Management Section */}
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Two-Factor Authentication</h2>
+          {/* Two-Factor Authentication Section */}
+          <Card className="p-6">
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Two-Factor Authentication</h2>
+              <p className="text-gray-600">Add an extra layer of security to your account with 2FA</p>
+            </div>
             <MFAManager />
-          </div>
+          </Card>
 
-          {/* Other Security Settings */}
+          {/* Password & Security Management */}
           <Card className="p-6">
             <SecuritySettings user={user} />
           </Card>
