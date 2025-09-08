@@ -1,21 +1,19 @@
-version: '3.8'
-
 services:
   gradvy-postgres:
     image: postgres:15-alpine
     container_name: gradvy-postgres
     environment:
-      POSTGRES_DB: gradvy_db
-      POSTGRES_USER: gradvy_user
+      POSTGRES_DB: ${POSTGRES_DB:-gradvy_db}
+      POSTGRES_USER: ${POSTGRES_USER:-gradvy_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gradvy_secure_2024}
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+      POSTGRES_INITDB_ARGS: '--encoding=UTF-8 --lc-collate=C --lc-ctype=C'
     ports:
-      - "5432:5432"
+      - '${POSTGRES_PORT:-5433}:${POSTGRES_INTERNAL_PORT:-5432}'
     volumes:
       - gradvy_postgres:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gradvy_user -d gradvy_db"]
+      test: ['CMD-SHELL', 'pg_isready -U gradvy_user -d gradvy_db']
       interval: 30s
       timeout: 10s
       retries: 5
@@ -24,21 +22,21 @@ services:
       - gradvy-net
     restart: unless-stopped
     logging:
-      driver: "json-file"
+      driver: 'json-file'
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: '10m'
+        max-file: '3'
 
   gradvy-redis:
     image: redis:7-alpine
     container_name: gradvy-redis
     ports:
-      - "6380:6379"
+      - '${REDIS_PORT:-6380}:${REDIS_INTERNAL_PORT:-6379}'
     volumes:
       - gradvy_redis:/data
     command: redis-server --appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy allkeys-lru
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 30s
       timeout: 10s
       retries: 5
@@ -47,17 +45,17 @@ services:
       - gradvy-net
     restart: unless-stopped
     logging:
-      driver: "json-file"
+      driver: 'json-file'
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: '10m'
+        max-file: '3'
 
 volumes:
   gradvy_postgres:
     driver: local
     name: gradvy_postgres_data
   gradvy_redis:
-    driver: local 
+    driver: local
     name: gradvy_redis_data
 
 networks:

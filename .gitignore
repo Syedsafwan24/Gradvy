@@ -1,38 +1,310 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# =============================================================================
+# GRADVY PROJECT - GITIGNORE
+# =============================================================================
 
-# dependencies
-node_modules
+# =============================================================================
+# PYTHON/DJANGO BACKEND
+# =============================================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+static/
+
+# Environment variables
+.env
+.env.local
+.env.example
+.env.production
+.env.staging
+.env.development
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Django migrations (optional - uncomment if you want to ignore migrations)
+# */migrations/*.py
+# !*/migrations/__init__.py
+
+# =============================================================================
+# NODE.JS/NEXT.JS FRONTEND
+# =============================================================================
+
+# Dependencies
+node_modules/
 /node_modules
 /.pnp
 .pnp.js
-
-# testing
-/coverage
-
-# next.js
-.next/
-/.next/
-/out/
-
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# local env files
-.env*.local
+# Next.js
+.next/
+/.next/
+/out/
+out/
+build/
+dist/
+
+# Production
+/build
+
+# Testing
+/coverage
+coverage/
+*.lcov
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# nyc test coverage
+.nyc_output
+
+# ESLint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
 
-# vercel
+# Vercel
 .vercel
 
-# typescript
+# TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# =============================================================================
+# DOCKER
+# =============================================================================
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+# =============================================================================
+# DATABASE
+# =============================================================================
+
+# PostgreSQL
+*.dump
+*.sql.backup
+
+# SQLite
+*.sqlite
+*.sqlite3
+*.db
+
+# Redis dump file
+dump.rdb
+
+# =============================================================================
+# IDE & EDITORS
+# =============================================================================
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# PyCharm
+.idea/
+*.swp
+*.swo
+*~
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*.tmp
+
+# =============================================================================
+# OPERATING SYSTEM
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE_BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+
+# =============================================================================
+# LOGS & TEMPORARY FILES
+# =============================================================================
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Temporary folders
+tmp/
+temp/
+
+# =============================================================================
+# SECURITY & SECRETS
+# =============================================================================
+
+# API keys and secrets
+secrets/
+.secrets/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# JWT secrets
+jwt-secret
+.jwt
+
+# =============================================================================
+# BACKUP & ARCHIVE FILES
+# =============================================================================
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+*.tmp
+
+# Archive files
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# =============================================================================
+# PROJECT SPECIFIC
+# =============================================================================
+
+# Gradvy specific
+uploads/
+user_uploads/
+static_collected/
+media_root/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# =============================================================================
+# END OF GITIGNORE
+# =============================================================================
