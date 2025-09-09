@@ -199,15 +199,40 @@ export default function QuickOnboardingPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              <h1 className="text-4xl font-bold text-gray-900 mb-3">
                 Welcome to Gradvy! 👋
               </h1>
-              <p className="text-gray-600 mb-4">
+              <p className="text-lg text-gray-600 mb-6">
                 Let's quickly personalize your learning experience
               </p>
-              <div className="bg-white/80 backdrop-blur-sm p-4 rounded-lg inline-block">
-                <p className="text-sm text-gray-700">
-                  ⚡ Takes less than 2 minutes • You can always customize later
+              <div className="bg-white/90 backdrop-blur-sm p-6 rounded-xl inline-block shadow-lg">
+                <div className="flex items-center justify-center space-x-6 text-sm">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-2xl">⚡</span>
+                    <span className="text-gray-700 font-medium">2 minutes</span>
+                  </div>
+                  <div className="w-px h-6 bg-gray-300"></div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-2xl">🎯</span>
+                    <span className="text-gray-700 font-medium">4 questions</span>
+                  </div>
+                  <div className="w-px h-6 bg-gray-300"></div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-2xl">🔄</span>
+                    <span className="text-gray-700 font-medium">Customize later</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-6">
+                <p className="text-sm text-gray-500">
+                  Want more detailed setup?{' '}
+                  <button 
+                    onClick={() => router.push('/onboarding')}
+                    className="text-blue-600 hover:text-blue-700 underline"
+                  >
+                    Try full onboarding instead
+                  </button>
                 </p>
               </div>
             </motion.div>

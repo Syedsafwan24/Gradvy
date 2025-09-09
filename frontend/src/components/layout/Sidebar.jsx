@@ -16,7 +16,8 @@ import {
   Brain,
   BarChart3,
   BookOpen,
-  Users
+  Users,
+  Sliders
 } from 'lucide-react';
 import { selectCurrentUser } from '../../store/slices/authSlice';
 
@@ -53,6 +54,12 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
           description: 'Account actions'
         }
       ]
+    },
+    {
+      name: 'Preferences',
+      href: '/preferences',
+      icon: Sliders,
+      description: 'Learning preferences'
     },
     {
       name: 'Learning',

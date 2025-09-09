@@ -455,30 +455,39 @@ export default function QuickOnboardingStep({
           )}
         </div>
 
-        <Button
-          onClick={handleNext}
-          disabled={!canProceed() || isLoading}
-          className="bg-blue-600 hover:bg-blue-700"
-        >
-          {currentStep === totalSteps - 1 ? (
-            isLoading ? (
-              <>
-                <span className="animate-spin mr-2">⏳</span>
-                Saving...
-              </>
+        <div className="flex items-center space-x-3">
+          {isSaving && (
+            <div className="text-sm text-gray-500 flex items-center">
+              <span className="animate-spin mr-2">💾</span>
+              Saving progress...
+            </div>
+          )}
+          
+          <Button
+            onClick={handleNext}
+            disabled={!canProceed() || isLoading}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            {currentStep === totalSteps - 1 ? (
+              isLoading ? (
+                <>
+                  <span className="animate-spin mr-2">⏳</span>
+                  Completing...
+                </>
+              ) : (
+                <>
+                  Complete Setup
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </>
+              )
             ) : (
               <>
-                Complete Setup
+                Continue
                 <ArrowRight className="ml-2 h-4 w-4" />
               </>
-            )
-          ) : (
-            <>
-              Continue
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </>
-          )}
-        </Button>
+            )}
+          </Button>
+        </div>
       </motion.div>
 
       {/* Progress Summary */}

@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { ArrowLeft, ArrowRight, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useSubmitOnboardingMutation, preferencesApi } from '@/services/preferencesApi';
+import { useSubmitOnboardingMutation, useSaveOnboardingProgressMutation, preferencesApi } from '@/services/preferencesApi';
 
 // Import onboarding step components
 import WelcomeStep from '@/components/onboarding/WelcomeStep';
@@ -87,8 +87,9 @@ export default function OnboardingPage() {
   const dispatch = useDispatch();
   const { user, isAuthenticated } = useSelector(state => state.auth);
   
-  // RTK Query mutation for submitting onboarding
+  // RTK Query mutations
   const [submitOnboarding, { isLoading: isSubmitting, error: submitError }] = useSubmitOnboardingMutation();
+  const [saveProgress, { isLoading: isSaving }] = useSaveOnboardingProgressMutation();
   
   const [currentStep, setCurrentStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -186,6 +187,45 @@ export default function OnboardingPage() {
     return ONBOARDING_STEPS.length - 1;
   };
 
+  // Save progress after each step
+  const saveStepProgress = async (stepData) => {
+    try {
+      await saveProgress({
+        step: currentStep,
+        data: stepData,
+        timestamp: new Date().toISOString(),
+        type: 'full_onboarding'
+      });
+      console.log('Progress saved for step', currentStep);
+    } catch (error) {
+      console.warn('Failed to save progress:', error);
+    }
+  };
+
+  // Handle step data changes and save progress
+  const handleStepData = async (newData) => {
+    const updatedFormData = {
+      ...formData,
+      ...newData
+    };
+    
+    setFormData(updatedFormData);
+    
+    // Save progress when data changes
+    await saveStepProgress(updatedFormData);
+    
+    // Mark step as completed if valid
+    const currentStepData = ONBOARDING_STEPS[currentStep];
+    if (!currentStepData.validation || currentStepData.validation(updatedFormData)) {
+      setCompletedSteps(prev => new Set([...prev, currentStep]));
+      setStepErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[currentStep];
+        return newErrors;
+      });
+    }
+  };
+
   // Get previous valid step index
   const getPreviousStepIndex = (fromIndex) => {
     for (let i = fromIndex - 1; i >= 0; i--) {
@@ -223,41 +263,6 @@ export default function OnboardingPage() {
   const handleJumpToStep = (stepIndex) => {
     if (stepIndex < currentStep || shouldShowStep(stepIndex)) {
       setCurrentStep(stepIndex);
-    }
-  };
-
-  // Enhanced step data handling with validation
-  const handleStepData = (stepData) => {
-    const updatedFormData = {
-      ...formData,
-      ...stepData
-    };
-    
-    setFormData(updatedFormData);
-    
-    // Clear any existing errors for this step
-    setStepErrors(prev => {
-      const newErrors = { ...prev };
-      delete newErrors[currentStep];
-      return newErrors;
-    });
-    
-    // Validate the updated data and mark step as completed if valid
-    const currentStepData = ONBOARDING_STEPS[currentStep];
-    if (currentStepData.validation) {
-      const isValid = currentStepData.validation(updatedFormData);
-      if (isValid) {
-        setCompletedSteps(prev => new Set([...prev, currentStep]));
-      } else {
-        setCompletedSteps(prev => {
-          const newCompleted = new Set(prev);
-          newCompleted.delete(currentStep);
-          return newCompleted;
-        });
-      }
-    } else {
-      // No validation means step is completed when data is provided
-      setCompletedSteps(prev => new Set([...prev, currentStep]));
     }
   };
 
@@ -459,12 +464,32 @@ export default function OnboardingPage() {
             </div>
             
             <div className="text-center">
-              <h1 className="text-2xl font-bold text-gray-900">
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">
                 {currentStepData.title}
               </h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Step {currentStep + 1} of {ONBOARDING_STEPS.length}
+              <p className="text-lg text-gray-600 mb-1">
+                Complete Profile Setup
               </p>
+              <p className="text-sm text-gray-500">
+                Step {currentStep + 1} of {ONBOARDING_STEPS.length} • Get the most personalized experience
+              </p>
+              
+              {currentStep === 0 && (
+                <div className="mt-4 bg-white/80 backdrop-blur-sm p-4 rounded-lg inline-block">
+                  <p className="text-sm text-gray-700">
+                    🎯 Comprehensive setup • 📊 Detailed preferences • ⭐ Best recommendations
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Already have basic preferences?{' '}
+                    <button 
+                      onClick={() => router.push('/quick-onboarding')}
+                      className="text-blue-600 hover:text-blue-700 underline"
+                    >
+                      Try quick setup instead
+                    </button>
+                  </p>
+                </div>
+              )}
             </div>
             
             <div className="w-20"></div> {/* Spacer for centering */}
@@ -476,6 +501,12 @@ export default function OnboardingPage() {
             <div className="flex justify-between text-xs text-gray-500">
               <span>Getting Started</span>
               <div className="flex items-center space-x-2">
+                {isSaving && (
+                  <div className="flex items-center space-x-1">
+                    <span className="animate-spin">💾</span>
+                    <span>Saving...</span>
+                  </div>
+                )}
                 <span>{Math.round(progressPercentage)}% Complete</span>
                 <span>•</span>
                 <span>{completedSteps.size - 1}/{ONBOARDING_STEPS.length - 1} Steps</span>
@@ -550,6 +581,7 @@ export default function OnboardingPage() {
                     onNext={handleNextStep}
                     onComplete={handleComplete}
                     isLoading={isLoading || isSubmitting}
+                    isSaving={isSaving}
                     currentStep={currentStep}
                     totalSteps={ONBOARDING_STEPS.length}
                     smartSuggestions={getSmartSuggestions(currentStepData.id)}
