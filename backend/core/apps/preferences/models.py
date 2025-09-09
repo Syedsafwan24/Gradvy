@@ -3,6 +3,7 @@ MongoDB models for user preferences and personalization data.
 Uses MongoEngine for document modeling with validation.
 """
 from datetime import datetime, timedelta
+import uuid
 from typing import Dict, List, Any, Optional
 from mongoengine import (
     Document, EmbeddedDocument, EmbeddedDocumentField, EmbeddedDocumentListField,
@@ -190,28 +191,34 @@ class BehavioralPatterns(EmbeddedDocument):
 
 class ConsentRecord(EmbeddedDocument):
     """Individual consent tracking record"""
-    
+
     CONSENT_TYPES = [
-        'essential', 'analytics', 'personalization', 'marketing', 
-        'social_data', 'behavioral_analysis', 'location_data', 
+        'essential', 'analytics', 'personalization', 'marketing',
+        'social_data', 'behavioral_analysis', 'location_data',
         'device_fingerprinting', 'third_party_sharing'
     ]
-    
-    consent_type = StringField(choices=CONSENT_TYPES, required=True)
+
+    # Unique identifier for the consent record (useful for UI updates)
+    record_id = StringField(max_length=64, default=lambda: uuid.uuid4().hex)
+
+    # Either a single type or multiple types recorded together
+    consent_type = StringField(choices=CONSENT_TYPES)
+    consent_types = ListField(StringField(choices=CONSENT_TYPES), default=list)
+
     granted = BooleanField(default=False)
     granted_at = DateTimeField()
     updated_at = DateTimeField(default=datetime.utcnow)
     expires_at = DateTimeField()  # Optional expiration
-    
+
     # Consent source and method
     consent_method = StringField(max_length=50, default='explicit')  # explicit, implicit, updated
     ip_address = StringField(max_length=45)  # IPv4 or IPv6
     user_agent = StringField(max_length=500)
-    
+
     # Legal basis under GDPR
     LEGAL_BASIS_CHOICES = ['consent', 'contract', 'legal_obligation', 'vital_interests', 'public_task', 'legitimate_interests']
     legal_basis = StringField(choices=LEGAL_BASIS_CHOICES, default='consent')
-    
+
     # Additional metadata
     consent_version = StringField(max_length=20, default='1.0')
     withdrawal_reason = StringField(max_length=200)
@@ -665,6 +672,7 @@ class UserPreference(Document):
         """Record user consent for GDPR compliance"""
         consent_record = ConsentRecord(
             consent_types=consent_types,
+            granted=True,
             granted_at=datetime.utcnow(),
             ip_address=ip_address,
             user_agent=user_agent
@@ -679,17 +687,56 @@ class UserPreference(Document):
         # Map consent types to privacy settings
         consent_mapping = {
             'analytics': 'allow_analytics',
-            'personalization': 'allow_personalization', 
+            'personalization': 'allow_personalization',
             'marketing': 'allow_marketing',
-            'social_integration': 'allow_social_data_collection',
+            'social_data': 'allow_social_data_collection',
             'behavioral_analysis': 'allow_behavioral_analysis',
-            'external_enrichment': 'allow_third_party_sharing'
+            'third_party_sharing': 'allow_third_party_sharing',
+            'location_data': 'allow_location_tracking',
+            'device_fingerprinting': 'allow_device_fingerprinting',
         }
         
         for consent_type in consent_types:
             if consent_type in consent_mapping:
                 setattr(self.privacy_settings, consent_mapping[consent_type], True)
         
+        self.privacy_settings.last_updated = datetime.utcnow()
+        self.save()
+
+    def record_consent_change(self, consent_type: str, granted: bool, ip_address: str = None,
+                              user_agent: str = None, consent_version: str = '1.0'):
+        """Record a change for a single consent type and update flags"""
+        change = ConsentRecord(
+            consent_type=consent_type,
+            consent_types=[consent_type],
+            granted=granted,
+            granted_at=datetime.utcnow() if granted else None,
+            updated_at=datetime.utcnow(),
+            ip_address=ip_address,
+            user_agent=user_agent,
+            consent_version=consent_version,
+        )
+
+        self.consent_history.append(change)
+
+        # Ensure privacy settings exists
+        if not self.privacy_settings:
+            self.privacy_settings = PrivacySettings()
+
+        # Map to setting field
+        mapping = {
+            'analytics': 'allow_analytics',
+            'personalization': 'allow_personalization',
+            'marketing': 'allow_marketing',
+            'social_data': 'allow_social_data_collection',
+            'behavioral_analysis': 'allow_behavioral_analysis',
+            'third_party_sharing': 'allow_third_party_sharing',
+            'location_data': 'allow_location_tracking',
+            'device_fingerprinting': 'allow_device_fingerprinting',
+        }
+        if consent_type in mapping:
+            setattr(self.privacy_settings, mapping[consent_type], granted)
+
         self.privacy_settings.last_updated = datetime.utcnow()
         self.save()
     

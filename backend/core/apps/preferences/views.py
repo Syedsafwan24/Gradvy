@@ -19,6 +19,9 @@ from .serializers import (
     InteractionLogSerializer, CourseRecommendationSerializer,
     UserAnalyticsSerializer
 )
+from django.conf import settings
+from django.http import JsonResponse
+from django.utils.timezone import now
 
 logger = logging.getLogger(__name__)
 
@@ -451,6 +454,203 @@ class PreferenceChoicesView(views.APIView):
         return Response(choices)
 
 
+# =============================================================================
+# PRIVACY & CONSENT API ENDPOINTS (alignment with frontend component)
+# =============================================================================
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PrivacyConsentSummaryView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """Return privacy summary and consent records for the current user"""
+        pref = UserPreference.get_by_user_id(request.user.id)
+        if not pref:
+            pref = UserPreference.create_for_user(request.user.id)
+
+        privacy = pref.privacy_settings
+        records = []
+        for rec in (pref.consent_history or []):
+            records.append({
+                'id': getattr(rec, 'record_id', None) or rec.consent_type or (rec.consent_types[0] if rec.consent_types else None),
+                'consent_type': rec.consent_type,
+                'consent_types': rec.consent_types,
+                'granted': rec.granted,
+                'granted_at': rec.granted_at.isoformat() if rec.granted_at else None,
+                'updated_at': rec.updated_at.isoformat() if rec.updated_at else None,
+                'expires_at': rec.expires_at.isoformat() if rec.expires_at else None,
+                'consent_version': rec.consent_version,
+            })
+
+        summary = pref.get_privacy_summary()
+        return Response({
+            'privacy_summary': summary,
+            'consent_records': records,
+        })
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PrivacyConsentUpdateView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request, consent_id):
+        """Update a specific consent (by record_id or consent_type)"""
+        granted = request.data.get('granted', None)
+        if granted is None:
+            return Response({'error': 'granted is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        pref = UserPreference.get_by_user_id(request.user.id)
+        if not pref:
+            return Response({'error': 'User preferences not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Resolve consent type
+        ctype = None
+        # Match by record_id
+        for rec in (pref.consent_history or []):
+            if getattr(rec, 'record_id', None) == consent_id:
+                ctype = rec.consent_type or (rec.consent_types[0] if rec.consent_types else None)
+                break
+        # Fallback to treating consent_id as type
+        if not ctype:
+            ctype = consent_id
+
+        pref.record_consent_change(
+            consent_type=ctype,
+            granted=bool(granted),
+            ip_address=request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR')),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')
+        )
+
+        # Return updated record snapshot
+        latest = None
+        for rec in reversed(pref.consent_history):
+            rtype = rec.consent_type or (rec.consent_types[0] if rec.consent_types else None)
+            if rtype == ctype:
+                latest = rec
+                break
+
+        return Response({
+            'consent': {
+                'id': getattr(latest, 'record_id', None),
+                'consent_type': latest.consent_type,
+                'consent_types': latest.consent_types,
+                'granted': latest.granted,
+                'granted_at': latest.granted_at.isoformat() if latest.granted_at else None,
+                'updated_at': latest.updated_at.isoformat() if latest.updated_at else None,
+            },
+            'privacy_data': pref.get_privacy_summary()
+        })
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class RevokeAllConsentsView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        pref = UserPreference.get_by_user_id(request.user.id)
+        if not pref:
+            return Response({'error': 'User preferences not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Revoke all non-essential consents
+        revoke_types = [
+            'analytics', 'personalization', 'marketing', 'social_data',
+            'behavioral_analysis', 'third_party_sharing', 'location_data', 'device_fingerprinting'
+        ]
+        for t in revoke_types:
+            pref.record_consent_change(
+                consent_type=t,
+                granted=False,
+                ip_address=request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR')),
+                user_agent=request.META.get('HTTP_USER_AGENT', '')
+            )
+
+        return Response({
+            'status': 'success',
+            'privacy_data': pref.get_privacy_summary(),
+            'consent_records': [
+                {
+                    'id': rec.record_id,
+                    'consent_type': rec.consent_type,
+                    'consent_types': rec.consent_types,
+                    'granted': rec.granted,
+                    'updated_at': rec.updated_at.isoformat() if rec.updated_at else None,
+                } for rec in pref.consent_history
+            ]
+        })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def consent_history_download(request):
+    """Download consent history as JSON attachment"""
+    pref = UserPreference.get_by_user_id(request.user.id)
+    if not pref:
+        return Response({'error': 'User preferences not found'}, status=404)
+
+    payload = [
+        {
+            'id': rec.record_id,
+            'consent_type': rec.consent_type,
+            'consent_types': rec.consent_types,
+            'granted': rec.granted,
+            'granted_at': rec.granted_at.isoformat() if rec.granted_at else None,
+            'updated_at': rec.updated_at.isoformat() if rec.updated_at else None,
+            'consent_version': rec.consent_version,
+        }
+        for rec in pref.consent_history
+    ]
+    response = JsonResponse(payload, safe=False)
+    response['Content-Disposition'] = 'attachment; filename="consent-history.json"'
+    return response
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def privacy_versions(request):
+    privacy_version = getattr(settings, 'PRIVACY_POLICY_VERSION', '1.0')
+    terms_version = getattr(settings, 'TERMS_VERSION', '1.0')
+    cookie_version = getattr(settings, 'COOKIE_POLICY_VERSION', '1.0')
+    return Response({
+        'privacy_policy_version': privacy_version,
+        'terms_version': terms_version,
+        'cookie_policy_version': cookie_version,
+        'last_updated': now().isoformat()
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def privacy_accept(request):
+    policy = request.data.get('policy')  # 'privacy' | 'terms' | 'cookie'
+    version = request.data.get('version')
+    if not policy or not version:
+        return Response({'error': 'policy and version are required'}, status=400)
+
+    pref = UserPreference.get_by_user_id(request.user.id)
+    if not pref:
+        pref = UserPreference.create_for_user(request.user.id)
+
+    if not pref.privacy_settings:
+        from .models import PrivacySettings
+        pref.privacy_settings = PrivacySettings()
+
+    if policy == 'privacy':
+        pref.privacy_settings.privacy_policy_version = version
+        pref.privacy_settings.gdpr_consent_date = datetime.utcnow()
+    elif policy == 'terms':
+        pref.privacy_settings.terms_accepted_version = version
+    elif policy == 'cookie':
+        # Track via consent record for transparency
+        pref.record_consent_change('analytics', True)
+    else:
+        return Response({'error': 'invalid policy'}, status=400)
+
+    pref.privacy_settings.last_updated = datetime.utcnow()
+    pref.save()
+
+    return Response({'status': 'accepted', 'privacy_settings': pref.get_privacy_summary()})
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class AnalyticsEventAPIView(views.APIView):
     """
@@ -481,7 +681,7 @@ class AnalyticsEventAPIView(views.APIView):
             
             # Update behavioral patterns if consent given
             if (user_preference.privacy_settings and 
-                user_preference.privacy_settings.behavioral_analysis):
+                user_preference.privacy_settings.allow_behavioral_analysis):
                 self._update_behavioral_patterns(user_preference, processed_events)
             
             # Trigger AI insights update if significant activity
@@ -513,13 +713,12 @@ class AnalyticsEventAPIView(views.APIView):
             user_preference = UserPreference.create_for_user(user.id)
             
             # Set default privacy settings for new users
-            from .models import PrivacySettings
-            user_preference.privacy_settings = PrivacySettings(
-                essential_data_consent=True,
-                analytics_consent=False,
-                personalization_consent=False,
-            )
-            user_preference.save()
+        from .models import PrivacySettings
+        user_preference.privacy_settings = PrivacySettings(
+            allow_analytics=False,
+            allow_personalization=False,
+        )
+        user_preference.save()
         
         return user_preference, user_preference.created_at == user_preference.updated_at
     
@@ -555,13 +754,12 @@ class AnalyticsEventAPIView(views.APIView):
         
         # Log for AI training if consent given
         if (user_preference.privacy_settings and 
-            user_preference.privacy_settings.personalization_consent):
+            user_preference.privacy_settings.allow_personalization):
             AITrainingData.log_event(
                 user_id=request.user.id,
                 event_type=event_type,
                 event_data=processed_event['properties'],
-                user_context=processed_event['context'],
-                user_preference=user_preference
+                user_context=processed_event['context']
             )
         
         return processed_event
@@ -570,37 +768,37 @@ class AnalyticsEventAPIView(views.APIView):
         """Check if user has given consent for this event type"""
         if not user_preference.privacy_settings:
             return False  # No consent given
-        
+
         # Essential events are always allowed
         essential_events = ['session_start', 'session_end', 'error_event', 'form_submit']
         if event_type in essential_events:
-            return user_preference.privacy_settings.essential_data_consent
-        
+            return True
+
         # Map event types to required consent
         consent_mapping = {
-            'page_view': 'analytics_consent',
-            'route_change': 'analytics_consent',
-            'button_click': 'analytics_consent',
-            'link_click': 'analytics_consent',
-            'input_focus': 'behavioral_analysis',
-            'input_blur': 'behavioral_analysis',
-            'card_view': 'analytics_consent',
-            'card_click': 'analytics_consent',
-            'course_interaction': 'personalization_consent',
-            'learning_activity': 'personalization_consent',
-            'learning_session': 'personalization_consent',
-            'quiz_attempt': 'personalization_consent',
-            'search': 'analytics_consent',
-            'video_play': 'personalization_consent',
-            'video_pause': 'personalization_consent',
-            'video_complete': 'personalization_consent',
-            'user_engagement': 'behavioral_analysis',
-            'personalization_event': 'personalization_consent',
-            'goal_progress': 'personalization_consent',
-            'performance_metric': 'analytics_consent',
+            'page_view': 'allow_analytics',
+            'route_change': 'allow_analytics',
+            'button_click': 'allow_analytics',
+            'link_click': 'allow_analytics',
+            'input_focus': 'allow_behavioral_analysis',
+            'input_blur': 'allow_behavioral_analysis',
+            'card_view': 'allow_analytics',
+            'card_click': 'allow_analytics',
+            'course_interaction': 'allow_personalization',
+            'learning_activity': 'allow_personalization',
+            'learning_session': 'allow_personalization',
+            'quiz_attempt': 'allow_personalization',
+            'search': 'allow_analytics',
+            'video_play': 'allow_personalization',
+            'video_pause': 'allow_personalization',
+            'video_complete': 'allow_personalization',
+            'user_engagement': 'allow_behavioral_analysis',
+            'personalization_event': 'allow_personalization',
+            'goal_progress': 'allow_personalization',
+            'performance_metric': 'allow_analytics',
         }
-        
-        required_consent = consent_mapping.get(event_type, 'analytics_consent')
+
+        required_consent = consent_mapping.get(event_type, 'allow_analytics')
         return getattr(user_preference.privacy_settings, required_consent, False)
     
     def _create_minimal_event(self, event_type, user_preference):
@@ -686,11 +884,11 @@ class AnalyticsEventAPIView(views.APIView):
         """Get user's privacy level"""
         if not user_preference.privacy_settings:
             return 'unknown'
-        
+
         privacy = user_preference.privacy_settings
-        if privacy.behavioral_analysis and privacy.personalization_consent:
+        if privacy.allow_behavioral_analysis and privacy.allow_personalization:
             return 'full'
-        elif privacy.analytics_consent:
+        elif privacy.allow_analytics:
             return 'analytics'
         else:
             return 'minimal'
@@ -832,7 +1030,7 @@ class EnhancedUserAnalyticsView(views.APIView):
             # Add AI insights if available and consent given
             if (user_preference.ai_insights and 
                 user_preference.privacy_settings and 
-                user_preference.privacy_settings.personalization_consent):
+                user_preference.privacy_settings.allow_personalization):
                 analytics_data['ai_insights'] = {
                     'learning_patterns': user_preference.ai_insights.learning_patterns,
                     'strength_areas': user_preference.ai_insights.strength_areas,
@@ -1003,7 +1201,7 @@ def privacy_overview(request):
     Get comprehensive privacy overview for user
     """
     try:
-        user_pref = UserPreference.objects(user_id=str(request.user.id)).first()
+        user_pref = UserPreference.get_by_user_id(request.user.id)
         if not user_pref:
             return Response({'error': 'User preferences not found'}, status=404)
         
@@ -1011,11 +1209,12 @@ def privacy_overview(request):
         privacy_score = calculate_privacy_score(user_pref)
         
         # Get consent status
+        privacy = user_pref.privacy_settings
         consent_status = {
-            'analytics_consent': user_pref.privacy_settings.analytics_consent,
-            'behavioral_analysis': user_pref.privacy_settings.behavioral_analysis,
-            'personalization_consent': user_pref.privacy_settings.personalization_consent,
-            'marketing_consent': user_pref.privacy_settings.marketing_consent,
+            'allow_analytics': getattr(privacy, 'allow_analytics', False),
+            'allow_behavioral_analysis': getattr(privacy, 'allow_behavioral_analysis', False),
+            'allow_personalization': getattr(privacy, 'allow_personalization', False),
+            'allow_marketing': getattr(privacy, 'allow_marketing', False),
         }
         
         # Data collection summary
@@ -1059,25 +1258,27 @@ def privacy_quick_toggle(request):
         if not setting:
             return Response({'error': 'Setting parameter required'}, status=400)
         
-        user_pref = UserPreference.objects(user_id=str(request.user.id)).first()
+        user_pref = UserPreference.get_by_user_id(request.user.id)
         if not user_pref:
             return Response({'error': 'User preferences not found'}, status=404)
         
         # Update the specific setting
-        if setting == 'analytics_consent':
-            user_pref.privacy_settings.analytics_consent = value
-        elif setting == 'behavioral_analysis':
-            user_pref.privacy_settings.behavioral_analysis = value
-        elif setting == 'personalization_consent':
-            user_pref.privacy_settings.personalization_consent = value
-        elif setting == 'marketing_consent':
-            user_pref.privacy_settings.marketing_consent = value
-        else:
+        mapping = {
+            'analytics': 'allow_analytics',
+            'behavioral_analysis': 'allow_behavioral_analysis',
+            'personalization': 'allow_personalization',
+            'marketing': 'allow_marketing',
+        }
+        if setting not in mapping:
             return Response({'error': 'Invalid setting'}, status=400)
-        
-        # Record consent change
-        user_pref.record_consent_change(setting, value, request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR')))
-        user_pref.save()
+
+        # Record consent change (and update privacy settings)
+        user_pref.record_consent_change(
+            consent_type=setting,
+            granted=bool(value),
+            ip_address=request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR')),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')
+        )
         
         # Get updated privacy data
         privacy_score = calculate_privacy_score(user_pref)
@@ -1088,10 +1289,10 @@ def privacy_quick_toggle(request):
                 'privacy_score': privacy_score,
                 'overall_privacy_level': get_privacy_level_name(privacy_score),
                 'consent_status': {
-                    'analytics_consent': user_pref.privacy_settings.analytics_consent,
-                    'behavioral_analysis': user_pref.privacy_settings.behavioral_analysis,
-                    'personalization_consent': user_pref.privacy_settings.personalization_consent,
-                    'marketing_consent': user_pref.privacy_settings.marketing_consent,
+                    'allow_analytics': user_pref.privacy_settings.allow_analytics,
+                    'allow_behavioral_analysis': user_pref.privacy_settings.allow_behavioral_analysis,
+                    'allow_personalization': user_pref.privacy_settings.allow_personalization,
+                    'allow_marketing': user_pref.privacy_settings.allow_marketing,
                 }
             }
         })
@@ -1124,11 +1325,11 @@ def calculate_privacy_score(user_pref: UserPreference) -> int:
             score += 15
     
     # Privacy-conscious choices (lower collection = higher score)
-    if not privacy_settings.behavioral_analysis:
+    if not getattr(privacy_settings, 'allow_behavioral_analysis', False):
         score += 10
-    if not privacy_settings.marketing_consent:
+    if not getattr(privacy_settings, 'allow_marketing', False):
         score += 10
-    if privacy_settings.data_minimization:
+    if getattr(privacy_settings, 'data_minimization', False):
         score += 10
     
     return min(score, 100)
@@ -1148,12 +1349,12 @@ def get_recent_privacy_activity(user_pref: UserPreference) -> list:
     """Get recent privacy-related activities"""
     activities = []
     
-    # Get recent privacy events from consent records
-    if hasattr(user_pref.privacy_settings, 'consent_records') and user_pref.privacy_settings.consent_records:
-        for record in user_pref.privacy_settings.consent_records[-5:]:  # Last 5 records
+    # Get recent privacy events from consent history
+    if user_pref.consent_history:
+        for record in user_pref.consent_history[-5:]:  # Last 5 records
             activities.append({
                 'action': f'Consent {"granted" if record.granted else "withdrawn"}',
-                'description': f'{record.consent_type} consent updated',
+                'description': f'{(record.consent_type or ", ".join(record.consent_types))} consent updated',
                 'timestamp': record.updated_at.isoformat() if record.updated_at else datetime.now().isoformat(),
             })
     
@@ -1211,42 +1412,54 @@ def data_collection_settings(request):
 @api_view(['PUT'])
 @permission_classes([permissions.IsAuthenticated])
 def update_consent(request, consent_id):
-    """Update a specific consent record"""
+    """Update a specific consent (by record_id or consent_type)"""
     try:
-        user_pref = UserPreference.objects(user_id=str(request.user.id)).first()
+        user_pref = UserPreference.get_by_user_id(request.user.id)
         if not user_pref:
             return Response({'error': 'User preferences not found'}, status=status.HTTP_404_NOT_FOUND)
-        
-        granted = request.data.get('granted', False)
-        
-        # Find and update the consent record
-        consent_records = user_pref.privacy_settings.consent_records or []
-        for record in consent_records:
-            if str(record.id) == consent_id:
-                record.granted = granted
-                record.updated_at = datetime.now()
-                if granted and not record.granted_at:
-                    record.granted_at = datetime.now()
+
+        granted = bool(request.data.get('granted', False))
+
+        # Resolve consent type
+        consent_type = None
+        for rec in (user_pref.consent_history or []):
+            if getattr(rec, 'record_id', None) == consent_id:
+                consent_type = rec.consent_type or (rec.consent_types[0] if rec.consent_types else None)
                 break
-        else:
-            return Response({'error': 'Consent record not found'}, status=status.HTTP_404_NOT_FOUND)
-        
-        user_pref.save()
-        
-        # Return updated privacy data
+        if not consent_type:
+            consent_type = consent_id
+
+        # Record the change and update flags
+        user_pref.record_consent_change(
+            consent_type=consent_type,
+            granted=granted,
+            ip_address=request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR')),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')
+        )
+
+        # Prepare response with latest consent entry for this type
+        latest = None
+        for rec in reversed(user_pref.consent_history):
+            rtype = rec.consent_type or (rec.consent_types[0] if rec.consent_types else None)
+            if rtype == consent_type:
+                latest = rec
+                break
+
         privacy_score = calculate_privacy_score(user_pref)
         return Response({
             'consent': {
-                'id': consent_id,
+                'id': getattr(latest, 'record_id', None),
+                'consent_type': consent_type,
                 'granted': granted,
-                'updated_at': datetime.now().isoformat()
+                'granted_at': latest.granted_at.isoformat() if latest and latest.granted_at else None,
+                'updated_at': latest.updated_at.isoformat() if latest and latest.updated_at else None
             },
             'privacy_data': {
                 'privacy_score': privacy_score,
-                'consent_records': consent_records
+                'privacy_summary': user_pref.get_privacy_summary()
             }
         })
-        
+
     except Exception as e:
         logger.error(f"Error updating consent {consent_id} for user {request.user.id}: {str(e)}")
         return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -1255,32 +1468,42 @@ def update_consent(request, consent_id):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def revoke_all_consents(request):
-    """Revoke all user consents"""
+    """Revoke all non-essential consents"""
     try:
-        user_pref = UserPreference.objects(user_id=str(request.user.id)).first()
+        user_pref = UserPreference.get_by_user_id(request.user.id)
         if not user_pref:
             return Response({'error': 'User preferences not found'}, status=status.HTTP_404_NOT_FOUND)
-        
-        # Revoke all consent records
-        consent_records = user_pref.privacy_settings.consent_records or []
-        for record in consent_records:
-            if record.consent_type != 'essential':  # Keep essential consents
-                record.granted = False
-                record.updated_at = datetime.now()
-        
-        user_pref.save()
-        
-        # Return updated privacy data
+
+        revoke_types = [
+            'analytics', 'personalization', 'marketing', 'social_data',
+            'behavioral_analysis', 'third_party_sharing', 'location_data', 'device_fingerprinting'
+        ]
+        for t in revoke_types:
+            user_pref.record_consent_change(
+                consent_type=t,
+                granted=False,
+                ip_address=request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR')),
+                user_agent=request.META.get('HTTP_USER_AGENT', '')
+            )
+
         privacy_score = calculate_privacy_score(user_pref)
         return Response({
             'message': 'All non-essential consents have been revoked',
-            'consent_records': consent_records,
+            'consent_records': [
+                {
+                    'id': rec.record_id,
+                    'consent_type': rec.consent_type,
+                    'consent_types': rec.consent_types,
+                    'granted': rec.granted,
+                    'updated_at': rec.updated_at.isoformat() if rec.updated_at else None,
+                } for rec in user_pref.consent_history
+            ],
             'privacy_data': {
                 'privacy_score': privacy_score,
-                'consent_records': consent_records
+                'privacy_summary': user_pref.get_privacy_summary()
             }
         })
-        
+
     except Exception as e:
         logger.error(f"Error revoking all consents for user {request.user.id}: {str(e)}")
         return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -1289,41 +1512,39 @@ def revoke_all_consents(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def download_consent_history(request):
-    """Download user's consent history as PDF"""
+    """Download user's consent history as JSON"""
     try:
         from django.http import HttpResponse
-        from io import BytesIO
         import json
-        
-        user_pref = UserPreference.objects(user_id=str(request.user.id)).first()
+
+        user_pref = UserPreference.get_by_user_id(request.user.id)
         if not user_pref:
             return Response({'error': 'User preferences not found'}, status=status.HTTP_404_NOT_FOUND)
-        
-        # For now, return JSON data (in production, this would generate a proper PDF)
+
         consent_history = {
-            'user_id': str(request.user.id),
-            'generated_at': datetime.now().isoformat(),
+            'user_id': request.user.id,
+            'generated_at': datetime.utcnow().isoformat(),
             'consent_records': []
         }
-        
-        if user_pref.privacy_settings.consent_records:
-            for record in user_pref.privacy_settings.consent_records:
-                consent_history['consent_records'].append({
-                    'consent_type': record.consent_type,
-                    'granted': record.granted,
-                    'granted_at': record.granted_at.isoformat() if record.granted_at else None,
-                    'updated_at': record.updated_at.isoformat() if record.updated_at else None,
-                    'expires_at': record.expires_at.isoformat() if record.expires_at else None,
-                })
-        
-        # Create response with JSON content (simulating PDF download)
+
+        for record in (user_pref.consent_history or []):
+            consent_history['consent_records'].append({
+                'id': getattr(record, 'record_id', None),
+                'consent_type': record.consent_type,
+                'consent_types': record.consent_types,
+                'granted': record.granted,
+                'granted_at': record.granted_at.isoformat() if record.granted_at else None,
+                'updated_at': record.updated_at.isoformat() if record.updated_at else None,
+                'expires_at': record.expires_at.isoformat() if record.expires_at else None,
+            })
+
         response = HttpResponse(
             json.dumps(consent_history, indent=2),
             content_type='application/json'
         )
         response['Content-Disposition'] = 'attachment; filename="consent-history.json"'
         return response
-        
+
     except Exception as e:
         logger.error(f"Error generating consent history for user {request.user.id}: {str(e)}")
         return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

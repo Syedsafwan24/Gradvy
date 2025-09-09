@@ -356,7 +356,7 @@ const LoginPage = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
+        className="w-full max-w-2xl"
       >
         <Card className="p-8 shadow-2xl">
           <div className="text-center mb-8">
@@ -365,8 +365,10 @@ const LoginPage = () => {
           </div>
 
           <form onSubmit={handleLoginSubmit(onLoginSubmit)} className="space-y-6">
-            {/* Email Field */}
-            <div>
+            {/* Email & Password - stacked */}
+            <div className="grid grid-cols-1 gap-6">
+              {/* Email Field */}
+              <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
                 Email Address
               </label>
@@ -385,10 +387,10 @@ const LoginPage = () => {
               {loginErrors.email && (
                 <p className="mt-1 text-sm text-red-600">{loginErrors.email.message}</p>
               )}
-            </div>
+              </div>
 
-            {/* Password Field */}
-            <div>
+              {/* Password Field */}
+              <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
                 Password
               </label>
@@ -414,6 +416,7 @@ const LoginPage = () => {
               {loginErrors.password && (
                 <p className="mt-1 text-sm text-red-600">{loginErrors.password.message}</p>
               )}
+              </div>
             </div>
 
             {/* Remember Me & Forgot Password */}

@@ -4,6 +4,7 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import { selectCurrentUser } from '../../../store/slices/authSlice';
 import PrivacySettings from '../../../components/settings/PrivacySettings';
+import PrivacyQuickLinks from '../../../components/privacy/PrivacyQuickLinks';
 import { Card } from '../../../components/ui/Card';
 import ProtectedRoute from '../../../components/auth/ProtectedRoute';
 
@@ -28,6 +29,9 @@ const PrivacySettingsPage = () => {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Privacy Settings</h1>
           <p className="text-gray-600">Manage your data privacy and permissions</p>
         </div>
+
+        {/* Quick Links */}
+        <PrivacyQuickLinks />
 
         {/* Privacy Settings Card */}
         <Card className="p-6">

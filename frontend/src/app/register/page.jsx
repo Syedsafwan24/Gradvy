@@ -53,10 +53,11 @@ const RegisterPage = () => {
   const {
     register: registerField,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isValid },
     watch,
   } = useForm({
     resolver: yupResolver(registerSchema),
+    mode: 'onChange',
     defaultValues: {
       first_name: '',
       last_name: '',
@@ -112,6 +113,7 @@ const RegisterPage = () => {
   };
 
   const passwordStrength = getPasswordStrength(password);
+  const termsAccepted = watch('terms');
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4 py-8">
@@ -119,7 +121,7 @@ const RegisterPage = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
+        className="w-full max-w-2xl"
       >
         <Card className="p-8 shadow-2xl">
           <div className="text-center mb-8">
@@ -128,8 +130,10 @@ const RegisterPage = () => {
           </div>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            {/* First Name Field */}
-            <div>
+            {/* Name Fields */}
+            <div className="grid grid-cols-1 gap-6">
+              {/* First Name Field */}
+              <div>
               <label htmlFor="first_name" className="block text-sm font-medium text-gray-700 mb-2">
                 First Name
               </label>
@@ -148,10 +152,10 @@ const RegisterPage = () => {
               {errors.first_name && (
                 <p className="mt-1 text-sm text-red-600">{errors.first_name.message}</p>
               )}
-            </div>
+              </div>
 
-            {/* Last Name Field */}
-            <div>
+              {/* Last Name Field */}
+              <div>
               <label htmlFor="last_name" className="block text-sm font-medium text-gray-700 mb-2">
                 Last Name
               </label>
@@ -170,6 +174,7 @@ const RegisterPage = () => {
               {errors.last_name && (
                 <p className="mt-1 text-sm text-red-600">{errors.last_name.message}</p>
               )}
+              </div>
             </div>
 
             {/* Email Field */}
@@ -194,8 +199,10 @@ const RegisterPage = () => {
               )}
             </div>
 
-            {/* Password Field */}
-            <div>
+            {/* Password Fields */}
+            <div className="grid grid-cols-1 gap-6">
+              {/* Password Field */}
+              <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
                 Password
               </label>
@@ -243,10 +250,10 @@ const RegisterPage = () => {
               {errors.password && (
                 <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
               )}
-            </div>
+              </div>
 
-            {/* Confirm Password Field */}
-            <div>
+              {/* Confirm Password Field */}
+              <div>
               <label htmlFor="password_confirm" className="block text-sm font-medium text-gray-700 mb-2">
                 Confirm Password
               </label>
@@ -272,6 +279,7 @@ const RegisterPage = () => {
               {errors.password_confirm && (
                 <p className="mt-1 text-sm text-red-600">{errors.password_confirm.message}</p>
               )}
+              </div>
             </div>
 
             {/* Terms and Conditions */}
@@ -300,7 +308,7 @@ const RegisterPage = () => {
             {/* Submit Button */}
             <Button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !isValid || !termsAccepted}
               className="w-full"
             >
               {isLoading ? (
