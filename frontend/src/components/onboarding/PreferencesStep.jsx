@@ -5,7 +5,8 @@ import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowRight, Clock, Zap, Users, User, Building, TrendingUp } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { ArrowRight, Clock, Zap, Users, User, Building, TrendingUp, Plus } from 'lucide-react';
 
 const LEARNING_STYLES = [
   {
@@ -42,6 +43,13 @@ const LEARNING_STYLES = [
     description: 'Quizzes, simulations, and gamified learning',
     icon: '🎮',
     color: 'bg-orange-100 text-orange-800'
+  },
+  {
+    id: 'other_style',
+    title: 'Other Learning Style',
+    description: 'I prefer a different learning approach',
+    icon: '➕',
+    color: 'bg-gray-100 text-gray-800'
   }
 ];
 
@@ -97,6 +105,13 @@ const CAREER_STAGES = [
     description: 'Advancing in my current career',
     icon: Building,
     color: 'from-orange-500 to-red-600'
+  },
+  {
+    id: 'other_career',
+    title: 'Other',
+    description: 'My situation is different',
+    icon: Users,
+    color: 'from-gray-500 to-gray-600'
   }
 ];
 
@@ -128,6 +143,12 @@ export default function PreferencesStep({ data, onDataChange, onNext }) {
   const [selectedPace, setSelectedPace] = useState(data.preferred_pace || '');
   const [selectedCareer, setSelectedCareer] = useState(data.career_stage || '');
   const [selectedTimeline, setSelectedTimeline] = useState(data.target_timeline || '');
+  
+  // Custom inputs for "Other" options
+  const [customLearningStyle, setCustomLearningStyle] = useState(data.custom_learning_style || '');
+  const [customCareerStage, setCustomCareerStage] = useState(data.custom_career_stage || '');
+  const [showStyleInput, setShowStyleInput] = useState(selectedStyles.includes('other_style'));
+  const [showCareerInput, setShowCareerInput] = useState(selectedCareer === 'other_career');
 
   const toggleStyle = (styleId) => {
     const newStyles = selectedStyles.includes(styleId)
@@ -135,7 +156,14 @@ export default function PreferencesStep({ data, onDataChange, onNext }) {
       : [...selectedStyles, styleId];
     
     setSelectedStyles(newStyles);
-    onDataChange({ learning_style: newStyles });
+    setShowStyleInput(newStyles.includes('other_style'));
+    
+    if (!newStyles.includes('other_style')) {
+      setCustomLearningStyle('');
+      onDataChange({ learning_style: newStyles, custom_learning_style: '' });
+    } else {
+      onDataChange({ learning_style: newStyles, custom_learning_style: customLearningStyle });
+    }
   };
 
   const handlePaceSelect = (paceId) => {
@@ -145,7 +173,25 @@ export default function PreferencesStep({ data, onDataChange, onNext }) {
 
   const handleCareerSelect = (careerId) => {
     setSelectedCareer(careerId);
-    onDataChange({ career_stage: careerId });
+    setShowCareerInput(careerId === 'other_career');
+    
+    if (careerId === 'other_career') {
+      onDataChange({ career_stage: careerId, custom_career_stage: customCareerStage });
+    } else {
+      setCustomCareerStage('');
+      onDataChange({ career_stage: careerId, custom_career_stage: '' });
+    }
+  };
+
+  // Handlers for custom input changes
+  const handleCustomStyleChange = (value) => {
+    setCustomLearningStyle(value);
+    onDataChange({ learning_style: selectedStyles, custom_learning_style: value });
+  };
+
+  const handleCustomCareerChange = (value) => {
+    setCustomCareerStage(value);
+    onDataChange({ career_stage: 'other_career', custom_career_stage: value });
   };
 
   const handleTimelineSelect = (timelineId) => {

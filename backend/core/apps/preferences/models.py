@@ -113,6 +113,292 @@ class ContentPreferences(EmbeddedDocument):
     instructor_ratings_min = FloatField(min_value=0.0, max_value=5.0, default=3.0)
 
 
+class SocialData(EmbeddedDocument):
+    """Social media and professional profile data"""
+    
+    # LinkedIn data
+    linkedin_profile = DictField(default=dict)
+    linkedin_connections = IntField(min_value=0, default=0)
+    professional_headline = StringField(max_length=200)
+    industry = StringField(max_length=100)
+    experience_years = IntField(min_value=0, default=0)
+    education = ListField(DictField(), default=list)
+    skills = ListField(StringField(max_length=50), default=list)
+    certifications = ListField(DictField(), default=list)
+    
+    # GitHub data
+    github_profile = DictField(default=dict)
+    github_repos = IntField(min_value=0, default=0)
+    github_followers = IntField(min_value=0, default=0)
+    programming_languages = ListField(StringField(max_length=30), default=list)
+    github_contributions = IntField(min_value=0, default=0)
+    
+    # Google data
+    google_profile = DictField(default=dict)
+    google_interests = ListField(StringField(max_length=50), default=list)
+    
+    # Social engagement metrics
+    social_learning_score = FloatField(min_value=0.0, max_value=1.0, default=0.0)
+    peer_connections = IntField(min_value=0, default=0)
+    mentor_relationships = ListField(StringField(max_length=100), default=list)
+    
+    # Data freshness
+    last_updated = DateTimeField(default=datetime.utcnow)
+    data_quality_score = FloatField(min_value=0.0, max_value=1.0, default=0.5)
+
+
+class BehavioralPatterns(EmbeddedDocument):
+    """Learning behavior analysis and patterns"""
+    
+    # Learning velocity metrics
+    learning_velocity = FloatField(default=0.0)  # concepts per hour
+    average_session_length = FloatField(default=0.0)  # minutes
+    daily_consistency_score = FloatField(min_value=0.0, max_value=1.0, default=0.0)
+    
+    # Engagement patterns
+    engagement_score = FloatField(min_value=0.0, max_value=1.0, default=0.0)
+    attention_span_minutes = FloatField(min_value=0.0, default=30.0)
+    peak_activity_hours = ListField(IntField(min_value=0, max_value=23), default=list)
+    preferred_session_duration = IntField(min_value=5, max_value=480, default=60)  # minutes
+    
+    # Content interaction patterns
+    preferred_content_types = ListField(StringField(max_length=50), default=list)
+    content_completion_rate = FloatField(min_value=0.0, max_value=1.0, default=0.0)
+    quiz_performance_trend = ListField(FloatField(), default=list)
+    video_watch_patterns = DictField(default=dict)  # playback speed, skip patterns, etc.
+    
+    # Learning difficulties and strengths
+    struggle_areas = ListField(StringField(max_length=100), default=list)
+    strength_areas = ListField(StringField(max_length=100), default=list)
+    help_seeking_frequency = FloatField(min_value=0.0, default=0.0)
+    
+    # Dropout risk analysis
+    dropout_risk_score = FloatField(min_value=0.0, max_value=1.0, default=0.0)
+    warning_signals = ListField(StringField(max_length=100), default=list)
+    intervention_history = ListField(DictField(), default=list)
+    
+    # Motivation and goal tracking
+    goal_completion_rate = FloatField(min_value=0.0, max_value=1.0, default=0.0)
+    motivation_trend = ListField(FloatField(min_value=0.0, max_value=1.0), default=list)
+    achievement_unlock_rate = FloatField(min_value=0.0, default=0.0)
+    
+    # Analysis metadata
+    pattern_confidence = FloatField(min_value=0.0, max_value=1.0, default=0.5)
+    last_analyzed = DateTimeField(default=datetime.utcnow)
+    data_points_count = IntField(min_value=0, default=0)
+
+
+class ConsentRecord(EmbeddedDocument):
+    """Individual consent tracking record"""
+    
+    CONSENT_TYPES = [
+        'essential', 'analytics', 'personalization', 'marketing', 
+        'social_data', 'behavioral_analysis', 'location_data', 
+        'device_fingerprinting', 'third_party_sharing'
+    ]
+    
+    consent_type = StringField(choices=CONSENT_TYPES, required=True)
+    granted = BooleanField(default=False)
+    granted_at = DateTimeField()
+    updated_at = DateTimeField(default=datetime.utcnow)
+    expires_at = DateTimeField()  # Optional expiration
+    
+    # Consent source and method
+    consent_method = StringField(max_length=50, default='explicit')  # explicit, implicit, updated
+    ip_address = StringField(max_length=45)  # IPv4 or IPv6
+    user_agent = StringField(max_length=500)
+    
+    # Legal basis under GDPR
+    LEGAL_BASIS_CHOICES = ['consent', 'contract', 'legal_obligation', 'vital_interests', 'public_task', 'legitimate_interests']
+    legal_basis = StringField(choices=LEGAL_BASIS_CHOICES, default='consent')
+    
+    # Additional metadata
+    consent_version = StringField(max_length=20, default='1.0')
+    withdrawal_reason = StringField(max_length=200)
+
+
+class PrivacySettings(EmbeddedDocument):
+    """User privacy preferences and settings"""
+    
+    # Data collection consent levels
+    consent_records = EmbeddedDocumentListField(ConsentRecord, default=list)
+    
+    # Global privacy level
+    PRIVACY_LEVELS = ['minimal', 'balanced', 'full']
+    privacy_level = StringField(choices=PRIVACY_LEVELS, default='balanced')
+    
+    # Specific data collection settings
+    allow_analytics = BooleanField(default=True)
+    allow_personalization = BooleanField(default=True)
+    allow_marketing = BooleanField(default=False)
+    allow_social_data_collection = BooleanField(default=False)
+    allow_behavioral_analysis = BooleanField(default=True)
+    allow_location_tracking = BooleanField(default=False)
+    allow_device_fingerprinting = BooleanField(default=True)
+    allow_third_party_sharing = BooleanField(default=False)
+    
+    # Data retention preferences
+    data_retention_months = IntField(min_value=1, max_value=60, default=24)
+    auto_delete_inactive = BooleanField(default=True)
+    delete_after_months = IntField(min_value=6, max_value=84, default=36)
+    
+    # Communication preferences
+    email_notifications = BooleanField(default=True)
+    sms_notifications = BooleanField(default=False)
+    push_notifications = BooleanField(default=True)
+    marketing_emails = BooleanField(default=False)
+    
+    # Data export and portability
+    last_data_export = DateTimeField()
+    export_format_preference = StringField(max_length=20, default='json')
+    
+    # Privacy control metadata
+    data_minimization = BooleanField(default=True)
+    pseudonymization_enabled = BooleanField(default=True)
+    encryption_required = BooleanField(default=True)
+    
+    # GDPR compliance tracking
+    gdpr_consent_date = DateTimeField()
+    privacy_policy_version = StringField(max_length=20, default='1.0')
+    terms_accepted_version = StringField(max_length=20, default='1.0')
+    
+    # Settings metadata
+    last_updated = DateTimeField(default=datetime.utcnow)
+    updated_by_user = BooleanField(default=True)
+
+
+class ExternalDataSource(EmbeddedDocument):
+    """External platform integration data"""
+    
+    PLATFORM_TYPES = [
+        'linkedin', 'github', 'google', 'facebook', 'twitter', 
+        'stackoverflow', 'medium', 'youtube', 'coursera', 'udemy'
+    ]
+    
+    platform = StringField(choices=PLATFORM_TYPES, required=True)
+    platform_user_id = StringField(max_length=200)
+    platform_username = StringField(max_length=100)
+    
+    # Connection status
+    connected = BooleanField(default=False)
+    connection_date = DateTimeField()
+    last_sync = DateTimeField()
+    
+    # OAuth tokens (encrypted)
+    access_token_hash = StringField(max_length=500)  # Hashed for security
+    refresh_token_hash = StringField(max_length=500)
+    token_expires_at = DateTimeField()
+    
+    # Data collection permissions
+    permissions_granted = ListField(StringField(max_length=50), default=list)
+    data_types_collected = ListField(StringField(max_length=50), default=list)
+    
+    # Sync status and metrics
+    sync_frequency_hours = IntField(min_value=1, max_value=168, default=24)
+    successful_syncs = IntField(min_value=0, default=0)
+    failed_syncs = IntField(min_value=0, default=0)
+    last_sync_status = StringField(max_length=50, default='pending')
+    
+    # Collected data summary
+    data_points_collected = IntField(min_value=0, default=0)
+    data_quality_score = FloatField(min_value=0.0, max_value=1.0, default=0.5)
+    
+    # Privacy and consent
+    data_collection_consent = BooleanField(default=True)
+    data_sharing_consent = BooleanField(default=False)
+    retention_period_months = IntField(min_value=1, max_value=60, default=24)
+    
+    # Metadata
+    created_at = DateTimeField(default=datetime.utcnow)
+    updated_at = DateTimeField(default=datetime.utcnow)
+
+
+class DeviceUsagePattern(EmbeddedDocument):
+    """Device fingerprinting and usage pattern tracking"""
+    
+    # Device identification
+    device_fingerprint = StringField(max_length=200)  # Hashed fingerprint
+    device_type = StringField(max_length=20)  # desktop, mobile, tablet
+    
+    # Browser and OS information
+    browser = StringField(max_length=50)
+    browser_version = StringField(max_length=20)
+    operating_system = StringField(max_length=50)
+    os_version = StringField(max_length=20)
+    
+    # Screen and hardware info
+    screen_resolution = StringField(max_length=20)  # e.g., "1920x1080"
+    color_depth = IntField(min_value=1, max_value=64, default=24)
+    timezone_offset = IntField(min_value=-12, max_value=14, default=0)
+    
+    # Usage patterns
+    session_count = IntField(min_value=0, default=0)
+    total_time_minutes = FloatField(min_value=0.0, default=0.0)
+    average_session_length = FloatField(min_value=0.0, default=0.0)
+    
+    # Interaction patterns
+    click_patterns = DictField(default=dict)  # click frequency, locations, etc.
+    scroll_patterns = DictField(default=dict)  # scroll speed, distance, etc.
+    keyboard_patterns = DictField(default=dict)  # typing speed, patterns
+    
+    # Performance metrics
+    page_load_times = ListField(FloatField(), default=list)
+    interaction_delays = ListField(FloatField(), default=list)
+    error_frequency = FloatField(min_value=0.0, default=0.0)
+    
+    # Security and fraud detection
+    suspicious_activity_score = FloatField(min_value=0.0, max_value=1.0, default=0.0)
+    bot_probability = FloatField(min_value=0.0, max_value=1.0, default=0.0)
+    proxy_detection = BooleanField(default=False)
+    
+    # Location approximation (privacy-safe)
+    country_code = StringField(max_length=2)
+    city_hash = StringField(max_length=200)  # Hashed for privacy
+    isp_hash = StringField(max_length=200)  # Hashed ISP info
+    
+    # Tracking metadata
+    first_seen = DateTimeField(default=datetime.utcnow)
+    last_seen = DateTimeField(default=datetime.utcnow)
+    data_collection_consent = BooleanField(default=True)
+
+
+class LocationRecord(EmbeddedDocument):
+    """Privacy-compliant location data for personalization"""
+    
+    # Coarse location (GDPR compliant)
+    country_code = StringField(max_length=2)
+    region_code = StringField(max_length=10)  # state/province
+    city_name = StringField(max_length=100)
+    timezone = StringField(max_length=50)
+    
+    # Coordinates (if explicitly consented, rounded for privacy)
+    latitude_rounded = FloatField()  # Rounded to ~1km precision
+    longitude_rounded = FloatField()  # Rounded to ~1km precision
+    
+    # Usage context
+    location_type = StringField(max_length=20, default='home')  # home, work, travel, etc.
+    usage_frequency = IntField(min_value=0, default=1)
+    
+    # Learning context
+    preferred_content_languages = ListField(StringField(max_length=10), default=list)
+    local_time_preferences = DictField(default=dict)  # preferred learning hours
+    
+    # Privacy controls
+    precision_level = StringField(max_length=20, default='city')  # city, region, country
+    sharing_consent = BooleanField(default=False)
+    retention_days = IntField(min_value=1, max_value=365, default=90)
+    
+    # Collection metadata
+    collected_at = DateTimeField(default=datetime.utcnow)
+    collection_method = StringField(max_length=50)  # ip_geolocation, gps, manual
+    accuracy_meters = FloatField(min_value=0.0)  # GPS accuracy if applicable
+    
+    # Compliance and consent
+    gdpr_lawful_basis = StringField(max_length=50, default='consent')
+    explicit_consent = BooleanField(default=False)
+    consent_timestamp = DateTimeField()
+
+
 class UserPreference(Document):
     """
     Main user preference document storing all personalization data.
@@ -134,8 +420,24 @@ class UserPreference(Document):
     # User interactions array
     interactions = EmbeddedDocumentListField(InteractionData, default=list)
     
+    # Enhanced personalization data
+    social_data = EmbeddedDocumentField(SocialData)
+    behavioral_patterns = EmbeddedDocumentField(BehavioralPatterns)
+    
+    # Privacy and consent management
+    privacy_settings = EmbeddedDocumentField(PrivacySettings)
+    consent_history = EmbeddedDocumentListField(ConsentRecord, default=list)
+    
+    # External data integration
+    external_data_sources = EmbeddedDocumentListField(ExternalDataSource, default=list)
+    
+    # Device and context tracking
+    device_patterns = EmbeddedDocumentListField(DeviceUsagePattern, default=list)
+    location_history = EmbeddedDocumentListField(LocationRecord, default=list)
+    
     # Additional flexible data
     custom_preferences = DictField(default=dict)
+    feature_flags = DictField(default=dict)  # For A/B testing and gradual rollouts
     
     # Onboarding and Profile Completion Tracking
     onboarding_completed = BooleanField(default=False)
@@ -153,14 +455,55 @@ class UserPreference(Document):
     completion_milestones = DictField(default=dict)
     streak_data = DictField(default=dict)
     
-    # Metadata
+    # Metadata with comprehensive indexing strategy
     meta = {
         'collection': 'user_preferences',
         'indexes': [
+            # Primary indexes
             'user_id',
             '-updated_at',
+            
+            # Basic info indexes
             'basic_info.learning_goals',
-            'interactions.timestamp'
+            'basic_info.experience_level',
+            ('basic_info.experience_level', 'basic_info.learning_goals'),
+            
+            # Interaction indexes
+            'interactions.timestamp',
+            'interactions.type',
+            ('user_id', '-interactions.timestamp'),
+            
+            # Behavioral pattern indexes
+            'behavioral_patterns.engagement_score',
+            'behavioral_patterns.dropout_risk_score',
+            'behavioral_patterns.preferred_content_types',
+            
+            # Privacy and consent indexes
+            'privacy_settings.allow_personalization',
+            'privacy_settings.allow_behavioral_analysis',
+            'consent_history.granted_at',
+            
+            # External data indexes
+            'external_data_sources.platform',
+            'external_data_sources.last_sync',
+            
+            # Device and location indexes
+            'device_patterns.device_type',
+            'location_history.country_code',
+            
+            # AI insights indexes
+            'ai_insights.updated_at',
+            
+            # Compound indexes for complex queries
+            ('basic_info.learning_goals', 'behavioral_patterns.engagement_score'),
+            ('privacy_settings.allow_personalization', 'behavioral_patterns.dropout_risk_score'),
+            
+            # Text search index - requires proper setup
+            # ('basic_info.learning_goals', 'text'),  # Commented out - needs proper text index setup
+            
+            # TTL indexes for data retention
+            # ('interactions.timestamp', {'expireAfterSeconds': 31536000}),  # 1 year - commented out for now
+            # ('external_data_sources.expires_at', 1, {'expireAfterSeconds': 0}),  # Commented out - no expires_at field
         ]
     }
     
@@ -170,7 +513,13 @@ class UserPreference(Document):
         return super().save(*args, **kwargs)
     
     def add_interaction(self, interaction_type: str, data: Dict[str, Any], context: Dict[str, Any] = None):
-        """Add a new interaction to the user's history"""
+        """Add a new interaction to the user's history with enhanced privacy-aware tracking"""
+        # Check privacy consent before storing detailed interaction data
+        if not self.privacy_settings or not self.privacy_settings.allow_analytics:
+            # Store minimal interaction data without detailed tracking
+            data = {'type': interaction_type, 'timestamp': datetime.utcnow().isoformat()}
+            context = {'consent_limited': True}
+        
         interaction = InteractionData(
             type=interaction_type,
             data=data,
@@ -178,6 +527,11 @@ class UserPreference(Document):
             timestamp=datetime.utcnow()
         )
         self.interactions.append(interaction)
+        
+        # Update behavioral patterns if consent given
+        if self.privacy_settings and self.privacy_settings.allow_behavioral_analysis:
+            self._update_behavioral_patterns_from_interaction(interaction)
+        
         self.save()
     
     def get_recent_interactions(self, days: int = 30, interaction_type: str = None) -> List[InteractionData]:
@@ -195,7 +549,11 @@ class UserPreference(Document):
         return sorted(recent, key=lambda x: x.timestamp, reverse=True)
     
     def update_ai_insights(self, insights: Dict[str, Any]):
-        """Update AI-generated insights"""
+        """Update AI-generated insights with privacy checks"""
+        # Check if user consented to AI insights
+        if not self.privacy_settings or not self.privacy_settings.allow_personalization:
+            return
+        
         if not self.ai_insights:
             self.ai_insights = AIInsights()
         
@@ -303,8 +661,202 @@ class UserPreference(Document):
         preference.save()
         return preference
     
+    def record_consent(self, consent_types: List[str], ip_address: str = None, user_agent: str = None):
+        """Record user consent for GDPR compliance"""
+        consent_record = ConsentRecord(
+            consent_types=consent_types,
+            granted_at=datetime.utcnow(),
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+        
+        self.consent_history.append(consent_record)
+        
+        # Update privacy settings based on consent
+        if not self.privacy_settings:
+            self.privacy_settings = PrivacySettings()
+        
+        # Map consent types to privacy settings
+        consent_mapping = {
+            'analytics': 'allow_analytics',
+            'personalization': 'allow_personalization', 
+            'marketing': 'allow_marketing',
+            'social_integration': 'allow_social_data_collection',
+            'behavioral_analysis': 'allow_behavioral_analysis',
+            'external_enrichment': 'allow_third_party_sharing'
+        }
+        
+        for consent_type in consent_types:
+            if consent_type in consent_mapping:
+                setattr(self.privacy_settings, consent_mapping[consent_type], True)
+        
+        self.privacy_settings.last_updated = datetime.utcnow()
+        self.save()
+    
+    def add_external_data(self, source_type: str, source_id: str, data_content: Dict[str, Any], 
+                         confidence_score: float = 0.5, expires_in_days: int = 30):
+        """Add external data source with privacy checks"""
+        if not self.privacy_settings or not self.privacy_settings.allow_third_party_sharing:
+            return False
+        
+        external_data = ExternalDataSource(
+            platform=source_type,
+            platform_user_id=source_id,
+            data_quality_score=confidence_score,
+            last_sync=datetime.utcnow(),
+            data_collection_consent=True
+        )
+        
+        # Remove existing data from same source
+        self.external_data_sources = [
+            source for source in self.external_data_sources 
+            if not (source.platform == source_type and source.platform_user_id == source_id)
+        ]
+        
+        self.external_data_sources.append(external_data)
+        self.save()
+        return True
+    
+    def update_device_pattern(self, device_info: Dict[str, Any]):
+        """Update or create device usage pattern"""
+        device_id = self._generate_device_id(device_info)
+        
+        # Find existing device pattern
+        existing_pattern = None
+        for pattern in self.device_patterns:
+            if pattern.device_id == device_id:
+                existing_pattern = pattern
+                break
+        
+        if existing_pattern:
+            existing_pattern.update_last_seen()
+        else:
+            new_pattern = DeviceUsagePattern(
+                device_type=device_info.get('device_type'),
+                device_id=device_id,
+                operating_system=device_info.get('os'),
+                browser=device_info.get('browser'),
+                screen_resolution=device_info.get('screen_resolution')
+            )
+            self.device_patterns.append(new_pattern)
+        
+        self.save()
+    
+    def update_location(self, location_info: Dict[str, Any]):
+        """Update location history with privacy checks"""
+        if not self.privacy_settings or not self.privacy_settings.location_tracking:
+            return
+        
+        ip_hash = self._hash_ip(location_info.get('ip_address', ''))
+        
+        # Check if this location already exists
+        existing_location = None
+        for location in self.location_history:
+            if (location.country == location_info.get('country') and 
+                location.city == location_info.get('city')):
+                existing_location = location
+                break
+        
+        if existing_location:
+            existing_location.update_detection()
+        else:
+            new_location = LocationRecord(
+                country=location_info.get('country'),
+                city=location_info.get('city'),
+                region=location_info.get('region'),
+                timezone=location_info.get('timezone'),
+                ip_address_hash=ip_hash,
+                accuracy_level=location_info.get('accuracy_level', 'city')
+            )
+            self.location_history.append(new_location)
+        
+        self.save()
+    
+    def _update_behavioral_patterns_from_interaction(self, interaction: InteractionData):
+        """Update behavioral patterns based on new interaction"""
+        if not self.behavioral_patterns:
+            self.behavioral_patterns = BehavioralPatterns()
+        
+        # Update engagement score based on interaction type
+        engagement_weights = {
+            'course_complete': 1.0,
+            'quiz_attempt': 0.8, 
+            'video_watch': 0.6,
+            'course_click': 0.4,
+            'page_view': 0.2
+        }
+        
+        weight = engagement_weights.get(interaction.type, 0.1)
+        current_score = self.behavioral_patterns.engagement_score or 0.0
+        
+        # Exponential moving average
+        alpha = 0.1
+        self.behavioral_patterns.engagement_score = (alpha * weight) + ((1 - alpha) * current_score)
+        self.behavioral_patterns.last_analyzed = datetime.utcnow()
+    
+    def _generate_device_id(self, device_info: Dict[str, Any]) -> str:
+        """Generate anonymous device identifier"""
+        device_string = f"{device_info.get('os', '')}{device_info.get('browser', '')}{device_info.get('screen_resolution', '')}"
+        return hashlib.sha256(device_string.encode()).hexdigest()[:16]
+    
+    def _hash_ip(self, ip_address: str) -> str:
+        """Hash IP address for privacy"""
+        if not ip_address:
+            return ''
+        return hashlib.sha256(f"{ip_address}privacy_salt".encode()).hexdigest()[:16]
+    
+    def get_valid_external_data(self, source_type: str = None) -> List[ExternalDataSource]:
+        """Get valid external data sources"""
+        valid_data = []
+        for source in self.external_data_sources:
+            if source.connected:  # Check if source is connected instead
+                if source_type is None or source.platform == source_type:
+                    valid_data.append(source)
+        return valid_data
+    
+    def cleanup_expired_data(self):
+        """Clean up expired external data and old interactions"""
+        # Remove inactive external data sources
+        self.external_data_sources = [
+            source for source in self.external_data_sources 
+            if source.connected
+        ]
+        
+        # Apply retention policy to interactions based on privacy settings
+        if self.privacy_settings:
+            retention_days = {
+                'minimal': 30,
+                'standard': 365,
+                'extended': 730
+            }.get(self.privacy_settings.data_retention_months, 24)
+            
+            cutoff_date = datetime.utcnow() - timedelta(days=retention_days)
+            self.interactions = [
+                interaction for interaction in self.interactions 
+                if interaction.timestamp > cutoff_date
+            ]
+        
+        self.save()
+    
+    def get_privacy_summary(self) -> Dict[str, Any]:
+        """Get summary of privacy settings and data usage"""
+        if not self.privacy_settings:
+            return {'privacy_configured': False}
+        
+        return {
+            'privacy_configured': True,
+            'consent_types': [record.consent_type for record in self.consent_history if record.granted],
+            'data_retention_months': self.privacy_settings.data_retention_months,
+            'social_integration_enabled': self.privacy_settings.allow_social_data_collection,
+            'behavioral_analysis_enabled': self.privacy_settings.allow_behavioral_analysis,
+            'external_enrichment_enabled': self.privacy_settings.allow_third_party_sharing,
+            'location_tracking_enabled': self.privacy_settings.allow_location_tracking,
+            'last_privacy_update': self.privacy_settings.last_updated
+        }
+    
     def __str__(self):
-        return f"UserPreference(user_id={self.user_id})"
+        privacy_status = "with privacy controls" if self.privacy_settings else "no privacy config"
+        return f"UserPreference(user_id={self.user_id}, {privacy_status})"
 
 
 class ActivityData(EmbeddedDocument):

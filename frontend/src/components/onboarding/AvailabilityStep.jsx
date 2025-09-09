@@ -5,7 +5,8 @@ import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowRight, Clock, Youtube, BookOpen, Play, FileText, Headphones, Globe } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { ArrowRight, Clock, Youtube, BookOpen, Play, FileText, Headphones, Globe, Plus, X } from 'lucide-react';
 
 const TIME_AVAILABILITY = [
   {
@@ -76,6 +77,13 @@ const PREFERRED_PLATFORMS = [
     description: 'Professional development courses',
     icon: '💼',
     color: 'bg-cyan-100 text-cyan-800'
+  },
+  {
+    id: 'other_platform',
+    title: 'Other Platform',
+    description: 'Specify a different learning platform',
+    icon: '➕',
+    color: 'bg-gray-100 text-gray-800'
   }
 ];
 
@@ -121,6 +129,13 @@ const CONTENT_TYPES = [
     description: 'Practice tests and assessments',
     icon: FileText,
     color: 'bg-yellow-100 text-yellow-800'
+  },
+  {
+    id: 'other_content',
+    title: 'Other Content Type',
+    description: 'Specify a different content format',
+    icon: Plus,
+    color: 'bg-gray-100 text-gray-800'
   }
 ];
 
@@ -154,6 +169,11 @@ const LANGUAGES = [
     id: 'mandarin',
     title: 'Mandarin',
     flag: '🇨🇳'
+  },
+  {
+    id: 'other_language',
+    title: 'Other',
+    flag: '🌐'
   }
 ];
 
@@ -162,6 +182,14 @@ export default function AvailabilityStep({ data, onDataChange, onNext }) {
   const [selectedPlatforms, setSelectedPlatforms] = useState(data.preferred_platforms || []);
   const [selectedContentTypes, setSelectedContentTypes] = useState(data.content_types || []);
   const [selectedLanguages, setSelectedLanguages] = useState(data.language_preference || ['english']);
+  
+  // Custom inputs for "Other" options
+  const [customPlatform, setCustomPlatform] = useState(data.custom_platform || '');
+  const [customContentType, setCustomContentType] = useState(data.custom_content_type || '');
+  const [customLanguage, setCustomLanguage] = useState(data.custom_language || '');
+  const [showPlatformInput, setShowPlatformInput] = useState(selectedPlatforms.includes('other_platform'));
+  const [showContentInput, setShowContentInput] = useState(selectedContentTypes.includes('other_content'));
+  const [showLanguageInput, setShowLanguageInput] = useState(selectedLanguages.includes('other_language'));
 
   const handleTimeSelect = (timeId) => {
     setSelectedTime(timeId);
@@ -174,7 +202,14 @@ export default function AvailabilityStep({ data, onDataChange, onNext }) {
       : [...selectedPlatforms, platformId];
     
     setSelectedPlatforms(newPlatforms);
-    onDataChange({ preferred_platforms: newPlatforms });
+    setShowPlatformInput(newPlatforms.includes('other_platform'));
+    
+    if (!newPlatforms.includes('other_platform')) {
+      setCustomPlatform('');
+      onDataChange({ preferred_platforms: newPlatforms, custom_platform: '' });
+    } else {
+      onDataChange({ preferred_platforms: newPlatforms, custom_platform: customPlatform });
+    }
   };
 
   const toggleContentType = (typeId) => {
@@ -183,7 +218,14 @@ export default function AvailabilityStep({ data, onDataChange, onNext }) {
       : [...selectedContentTypes, typeId];
     
     setSelectedContentTypes(newTypes);
-    onDataChange({ content_types: newTypes });
+    setShowContentInput(newTypes.includes('other_content'));
+    
+    if (!newTypes.includes('other_content')) {
+      setCustomContentType('');
+      onDataChange({ content_types: newTypes, custom_content_type: '' });
+    } else {
+      onDataChange({ content_types: newTypes, custom_content_type: customContentType });
+    }
   };
 
   const toggleLanguage = (langId) => {
@@ -192,7 +234,30 @@ export default function AvailabilityStep({ data, onDataChange, onNext }) {
       : [...selectedLanguages, langId];
     
     setSelectedLanguages(newLanguages);
-    onDataChange({ language_preference: newLanguages });
+    setShowLanguageInput(newLanguages.includes('other_language'));
+    
+    if (!newLanguages.includes('other_language')) {
+      setCustomLanguage('');
+      onDataChange({ language_preference: newLanguages, custom_language: '' });
+    } else {
+      onDataChange({ language_preference: newLanguages, custom_language: customLanguage });
+    }
+  };
+
+  // Handlers for custom input changes
+  const handleCustomPlatformChange = (value) => {
+    setCustomPlatform(value);
+    onDataChange({ preferred_platforms: selectedPlatforms, custom_platform: value });
+  };
+
+  const handleCustomContentChange = (value) => {
+    setCustomContentType(value);
+    onDataChange({ content_types: selectedContentTypes, custom_content_type: value });
+  };
+
+  const handleCustomLanguageChange = (value) => {
+    setCustomLanguage(value);
+    onDataChange({ language_preference: selectedLanguages, custom_language: value });
   };
 
   const canProceed = selectedTime && selectedPlatforms.length > 0 && selectedContentTypes.length > 0 && selectedLanguages.length > 0;
@@ -306,6 +371,29 @@ export default function AvailabilityStep({ data, onDataChange, onNext }) {
             );
           })}
         </div>
+        
+        {/* Custom platform input */}
+        {showPlatformInput && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mt-3"
+          >
+            <Card className="p-3 border-gray-300 border-dashed">
+              <div className="flex items-center space-x-2 mb-2">
+                <Plus className="h-4 w-4 text-gray-600" />
+                <h4 className="font-medium text-gray-900 text-sm">Specify Other Platform</h4>
+              </div>
+              <Input
+                placeholder="e.g., Khan Academy, Skillshare, etc..."
+                value={customPlatform}
+                onChange={(e) => handleCustomPlatformChange(e.target.value)}
+                className="text-sm"
+              />
+            </Card>
+          </motion.div>
+        )}
       </motion.div>
 
       {/* Content Types */}
@@ -347,6 +435,29 @@ export default function AvailabilityStep({ data, onDataChange, onNext }) {
             );
           })}
         </div>
+        
+        {/* Custom content type input */}
+        {showContentInput && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mt-3"
+          >
+            <Card className="p-3 border-gray-300 border-dashed">
+              <div className="flex items-center space-x-2 mb-2">
+                <Plus className="h-4 w-4 text-gray-600" />
+                <h4 className="font-medium text-gray-900 text-sm">Specify Other Content Type</h4>
+              </div>
+              <Input
+                placeholder="e.g., VR simulations, gamified learning, etc..."
+                value={customContentType}
+                onChange={(e) => handleCustomContentChange(e.target.value)}
+                className="text-sm"
+              />
+            </Card>
+          </motion.div>
+        )}
       </motion.div>
 
       {/* Language Preferences */}
@@ -379,6 +490,29 @@ export default function AvailabilityStep({ data, onDataChange, onNext }) {
             );
           })}
         </div>
+        
+        {/* Custom language input */}
+        {showLanguageInput && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mt-3"
+          >
+            <Card className="p-3 border-gray-300 border-dashed">
+              <div className="flex items-center space-x-2 mb-2">
+                <Plus className="h-4 w-4 text-gray-600" />
+                <h4 className="font-medium text-gray-900 text-sm">Specify Other Language</h4>
+              </div>
+              <Input
+                placeholder="e.g., Japanese, Arabic, Italian, etc..."
+                value={customLanguage}
+                onChange={(e) => handleCustomLanguageChange(e.target.value)}
+                className="text-sm"
+              />
+            </Card>
+          </motion.div>
+        )}
       </motion.div>
 
       {/* Selected summary */}

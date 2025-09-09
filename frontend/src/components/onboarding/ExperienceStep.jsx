@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ArrowRight, BookOpen, Code, GraduationCap, Trophy } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { ArrowRight, BookOpen, Code, GraduationCap, Trophy, Plus, X } from 'lucide-react';
 
 const EXPERIENCE_LEVELS = [
   {
@@ -54,18 +55,44 @@ const EXPERIENCE_LEVELS = [
       'Want to stay current with trends'
     ],
     color: 'from-orange-500 to-red-600'
+  },
+  {
+    id: 'other',
+    title: 'Other',
+    description: 'My experience doesn\'t fit these categories',
+    icon: Plus,
+    details: [
+      'Unique background or experience',
+      'Mixed experience levels',
+      'Prefer to specify manually'
+    ],
+    color: 'from-gray-500 to-gray-600'
   }
 ];
 
 export default function ExperienceStep({ data, onDataChange, onNext }) {
   const [selectedLevel, setSelectedLevel] = useState(data.experience_level || '');
+  const [customExperience, setCustomExperience] = useState(data.custom_experience || '');
+  const [showCustomInput, setShowCustomInput] = useState(data.experience_level === 'other');
 
   const handleLevelSelect = (levelId) => {
     setSelectedLevel(levelId);
-    onDataChange({ experience_level: levelId });
+    setShowCustomInput(levelId === 'other');
+    
+    if (levelId === 'other') {
+      onDataChange({ experience_level: levelId, custom_experience: customExperience });
+    } else {
+      onDataChange({ experience_level: levelId, custom_experience: '' });
+      setCustomExperience('');
+    }
   };
 
-  const canProceed = selectedLevel !== '';
+  const handleCustomExperienceChange = (value) => {
+    setCustomExperience(value);
+    onDataChange({ experience_level: 'other', custom_experience: value });
+  };
+
+  const canProceed = selectedLevel !== '' && (selectedLevel !== 'other' || customExperience.trim() !== '');
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -153,6 +180,37 @@ export default function ExperienceStep({ data, onDataChange, onNext }) {
           );
         })}
       </motion.div>
+
+      {/* Custom experience input */}
+      {showCustomInput && (
+        <motion.div
+          variants={itemVariants}
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          className="space-y-3"
+        >
+          <Card className="p-4 border-gray-300 border-dashed">
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Plus className="h-4 w-4 text-gray-600" />
+                <h4 className="font-medium text-gray-900">Describe Your Experience</h4>
+              </div>
+              <Input
+                placeholder="Tell us about your background and experience level..."
+                value={customExperience}
+                onChange={(e) => handleCustomExperienceChange(e.target.value)}
+                className="w-full"
+                autoFocus
+              />
+              <p className="text-xs text-gray-500">
+                For example: "I have some coding experience but new to web development" or 
+                "I'm switching careers from marketing to tech"
+              </p>
+            </div>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Help text */}
       <motion.div variants={itemVariants} className="bg-blue-50 p-4 rounded-lg">

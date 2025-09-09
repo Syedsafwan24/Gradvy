@@ -1,0 +1,142 @@
+[
+  {
+    "model": "auth.socialprovider",
+    "pk": 1,
+    "fields": {
+      "name": "google",
+      "display_name": "Google",
+      "is_active": true,
+      "client_id": "your_google_client_id",
+      "client_secret": "your_google_client_secret",
+      "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+      "token_url": "https://oauth2.googleapis.com/token",
+      "user_info_url": "https://www.googleapis.com/oauth2/v2/userinfo",
+      "default_scopes": ["openid", "profile", "email"],
+      "optional_scopes": ["https://www.googleapis.com/auth/user.birthday.read", "https://www.googleapis.com/auth/user.addresses.read"],
+      "field_mappings": {
+        "name": "name",
+        "first_name": "given_name",
+        "last_name": "family_name",
+        "email": "email",
+        "avatar_url": "picture",
+        "email_verified": "email_verified"
+      },
+      "auto_register": true,
+      "require_email_verification": false,
+      "collect_extended_profile": true
+    }
+  },
+  {
+    "model": "auth.socialprovider",
+    "pk": 2,
+    "fields": {
+      "name": "github",
+      "display_name": "GitHub",
+      "is_active": true,
+      "client_id": "your_github_client_id",
+      "client_secret": "your_github_client_secret",
+      "authorize_url": "https://github.com/login/oauth/authorize",
+      "token_url": "https://github.com/login/oauth/access_token",
+      "user_info_url": "https://api.github.com/user",
+      "default_scopes": ["user:email"],
+      "optional_scopes": ["read:user", "user:follow", "public_repo"],
+      "field_mappings": {
+        "name": "name",
+        "username": "login",
+        "email": "email",
+        "avatar_url": "avatar_url",
+        "bio": "bio",
+        "location": "location",
+        "website": "blog",
+        "company": "company",
+        "followers_count": "followers",
+        "public_repos": "public_repos",
+        "account_created": "created_at"
+      },
+      "auto_register": true,
+      "require_email_verification": false,
+      "collect_extended_profile": true
+    }
+  },
+  {
+    "model": "auth.socialprovider",
+    "pk": 3,
+    "fields": {
+      "name": "linkedin",
+      "display_name": "LinkedIn",
+      "is_active": true,
+      "client_id": "your_linkedin_client_id",
+      "client_secret": "your_linkedin_client_secret",
+      "authorize_url": "https://www.linkedin.com/oauth/v2/authorization",
+      "token_url": "https://www.linkedin.com/oauth/v2/accessToken",
+      "user_info_url": "https://api.linkedin.com/v2/people/~",
+      "default_scopes": ["r_liteprofile", "r_emailaddress"],
+      "optional_scopes": ["r_fullprofile", "r_contactinfo"],
+      "field_mappings": {
+        "first_name": "firstName.localized.en_US",
+        "last_name": "lastName.localized.en_US",
+        "headline": "headline",
+        "industry": "industry",
+        "location": "location.name"
+      },
+      "auto_register": true,
+      "require_email_verification": false,
+      "collect_extended_profile": true
+    }
+  },
+  {
+    "model": "auth.socialprovider",
+    "pk": 4,
+    "fields": {
+      "name": "facebook",
+      "display_name": "Facebook",
+      "is_active": false,
+      "client_id": "your_facebook_client_id",
+      "client_secret": "your_facebook_client_secret",
+      "authorize_url": "https://www.facebook.com/v18.0/dialog/oauth",
+      "token_url": "https://graph.facebook.com/v18.0/oauth/access_token",
+      "user_info_url": "https://graph.facebook.com/v18.0/me",
+      "default_scopes": ["email", "public_profile"],
+      "optional_scopes": ["user_location", "user_education_history", "user_work_history"],
+      "field_mappings": {
+        "name": "name",
+        "first_name": "first_name",
+        "last_name": "last_name",
+        "email": "email",
+        "avatar_url": "picture.data.url",
+        "location": "location.name"
+      },
+      "auto_register": true,
+      "require_email_verification": true,
+      "collect_extended_profile": true
+    }
+  },
+  {
+    "model": "auth.socialprovider",
+    "pk": 5,
+    "fields": {
+      "name": "microsoft",
+      "display_name": "Microsoft",
+      "is_active": false,
+      "client_id": "your_microsoft_client_id",
+      "client_secret": "your_microsoft_client_secret",
+      "authorize_url": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      "token_url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      "user_info_url": "https://graph.microsoft.com/v1.0/me",
+      "default_scopes": ["openid", "profile", "email", "User.Read"],
+      "optional_scopes": ["User.ReadBasic.All", "Directory.Read.All"],
+      "field_mappings": {
+        "name": "displayName",
+        "first_name": "givenName",
+        "last_name": "surname",
+        "email": "mail",
+        "username": "userPrincipalName",
+        "company": "companyName",
+        "job_title": "jobTitle"
+      },
+      "auto_register": true,
+      "require_email_verification": false,
+      "collect_extended_profile": true
+    }
+  }
+]

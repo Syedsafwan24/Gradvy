@@ -8,6 +8,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include(tf_urls)),
     path('api/auth/', include('apps.auth.api.urls')),
+    path('api/auth/social/', include('apps.auth.social_urls')),
     path('api/preferences/', include('apps.preferences.urls')),
 ]
 
