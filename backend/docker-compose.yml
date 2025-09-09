@@ -50,6 +50,34 @@ services:
         max-size: '10m'
         max-file: '3'
 
+  gradvy-mongodb:
+    image: mongo:7.0
+    container_name: gradvy-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-gradvy_admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-gradvy_mongo_secure_2024}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-gradvy_preferences}
+    ports:
+      - '${MONGO_PORT:-27017}:${MONGO_INTERNAL_PORT:-27017}'
+    volumes:
+      - gradvy_mongodb:/data/db
+      - gradvy_mongodb_config:/data/configdb
+      - ./scripts/mongodb-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', 'db.adminCommand("ping")']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - gradvy-net
+    restart: unless-stopped
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
 volumes:
   gradvy_postgres:
     driver: local
@@ -57,6 +85,12 @@ volumes:
   gradvy_redis:
     driver: local
     name: gradvy_redis_data
+  gradvy_mongodb:
+    driver: local
+    name: gradvy_mongodb_data
+  gradvy_mongodb_config:
+    driver: local
+    name: gradvy_mongodb_config_data
 
 networks:
   gradvy-net:

@@ -56,11 +56,12 @@ fi
 # Check if data services are running
 print_status "Checking data services..."
 if ! docker-compose ps | grep -q "Up"; then
-    print_warning "Data services (PostgreSQL + Redis) are not running!"
+    print_warning "Data services (PostgreSQL + Redis + MongoDB) are not running!"
     echo ""
     echo "📋 Required services:"
     echo "   • PostgreSQL database (localhost:5432)"
     echo "   • Redis cache (localhost:6380)"
+    echo "   • MongoDB preferences (localhost:27017)"
     echo ""
     
     if ask_yes_no "Would you like to start the data services now?"; then
@@ -98,10 +99,32 @@ fi
 # Navigate to Django project
 cd core
 
-# Check database connection
-print_status "Testing database connection..."
+# Check database connections
+print_status "Testing database connections..."
 if ! python manage.py check --database default; then
-    print_error "Database connection failed! Check if PostgreSQL container is running."
+    print_error "PostgreSQL connection failed! Check if PostgreSQL container is running."
+    exit 1
+fi
+
+# Test MongoDB connection
+print_status "Testing MongoDB connection..."
+mongodb_check=$(python -c "
+try:
+    import mongoengine
+    from core.settings import MONGODB_SETTINGS
+    mongoengine.connect(**MONGODB_SETTINGS)
+    print('MongoDB: Connected successfully')
+except Exception as e:
+    print(f'MongoDB: Connection failed - {e}')
+    exit(1)
+" 2>/dev/null)
+
+if echo "$mongodb_check" | grep -q "Connected successfully"; then
+    print_success "MongoDB connection successful"
+else
+    print_error "MongoDB connection failed!"
+    print_info "Check MongoDB status: ./scripts/mongodb-status.sh"
+    print_info "Try starting services: ./scripts/data-start.sh"
     exit 1
 fi
 
@@ -178,7 +201,8 @@ print_success "Starting Django development server..."
 echo ""
 echo "🔧 Configuration:"
 echo "   • Database: PostgreSQL (Docker) -> localhost:5432"  
-echo "   • Redis: Redis (Docker) -> localhost:6380"
+echo "   • Cache: Redis (Docker) -> localhost:6380"
+echo "   • Preferences: MongoDB (Docker) -> localhost:27017"
 echo "   • Django: Local development server"
 if [ "$celery_worker_running" = true ]; then
     echo "   • Celery Worker: Running (background process)"
@@ -194,6 +218,7 @@ echo ""
 echo "🌐 Access Points:"
 echo "   • Django: http://localhost:8000/"
 echo "   • Admin: http://localhost:8000/admin/"
+echo "   • API Preferences: http://localhost:8000/api/preferences/"
 echo ""
 if [ "$celery_worker_running" = true ] || [ "$celery_beat_running" = true ]; then
     echo "📋 Celery Logs:"

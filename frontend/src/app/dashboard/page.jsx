@@ -7,9 +7,12 @@ import { User, BookOpen, TrendingUp, Clock, Award } from 'lucide-react';
 import { selectCurrentUser } from '../../store/slices/authSlice';
 import { Card } from '../../components/ui/Card';
 import ProtectedRoute from '../../components/auth/ProtectedRoute';
+import ProfileCompletionCard from '../../components/dashboard/ProfileCompletionCard';
+import { useProfileCompletionPrompts } from '../../hooks/useProfileCompletionPrompts';
 
 const DashboardPage = () => {
   const user = useSelector(selectCurrentUser);
+  const { showSuccessToast } = useProfileCompletionPrompts(user);
 
   const formatJoinDate = (dateString) => {
     if (!dateString) return 'Recently';
@@ -78,6 +81,9 @@ const DashboardPage = () => {
             </div>
           </Card>
         </motion.div>
+
+        {/* Profile Completion Card */}
+        <ProfileCompletionCard user={user} />
 
         {/* Getting Started */}
         <motion.div

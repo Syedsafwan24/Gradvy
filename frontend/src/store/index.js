@@ -1,5 +1,6 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { authApi } from './api/authApi';
+import { apiSlice } from './api/apiSlice';
 import authReducer from './slices/authSlice';
 import { persistStore, persistReducer } from 'redux-persist';
 import createWebStorage from 'redux-persist/lib/storage/createWebStorage';
@@ -25,11 +26,11 @@ const storage = typeof window !== 'undefined'
   : createNoopStorage();
 
 // Redux Persist Configuration
-// Note: Removed tokens from persistence for security - tokens now stored in httpOnly cookies
+// Note: Only persist user data, not auth state or tokens for security
 const persistConfig = {
   key: 'auth',
   storage,
-  whitelist: ['user', 'isAuthenticated'], // Persist user data and auth status, NOT tokens
+  whitelist: ['user'], // Only persist user data - auth state recalculated on page load
 };
 
 const persistedAuthReducer = persistReducer(persistConfig, authReducer);
@@ -38,6 +39,7 @@ export const store = configureStore({
   reducer: {
     auth: persistedAuthReducer,
     [authApi.reducerPath]: authApi.reducer,
+    [apiSlice.reducerPath]: apiSlice.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
@@ -50,7 +52,7 @@ export const store = configureStore({
           'persist/REGISTER'
         ],
       },
-    }).concat(authApi.middleware),
+    }).concat(authApi.middleware, apiSlice.middleware),
 });
 
 export const persistor = persistStore(store);

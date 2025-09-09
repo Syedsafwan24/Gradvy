@@ -1,0 +1,95 @@
+{
+  "summary": {
+    "total": 12,
+    "passed": 12,
+    "failed": 0,
+    "success_rate": 100.0,
+    "timestamp": "2025-09-09T05:31:47.498731"
+  },
+  "tests": [
+    {
+      "test": "MongoDB Connection",
+      "success": true,
+      "message": "Connected successfully",
+      "details": null,
+      "timestamp": "2025-09-09T05:31:47.418704"
+    },
+    {
+      "test": "Test Data Cleanup",
+      "success": true,
+      "message": "Cleaned up existing test data",
+      "details": null,
+      "timestamp": "2025-09-09T05:31:47.445462"
+    },
+    {
+      "test": "MongoDB Model Creation",
+      "success": true,
+      "message": "Created UserPreference for user 9999",
+      "details": null,
+      "timestamp": "2025-09-09T05:31:47.451246"
+    },
+    {
+      "test": "MongoDB Model Retrieval",
+      "success": true,
+      "message": "Retrieved preferences for user 9999",
+      "details": null,
+      "timestamp": "2025-09-09T05:31:47.452778"
+    },
+    {
+      "test": "MongoDB Interaction Logging",
+      "success": true,
+      "message": "Logged and retrieved 1 interactions",
+      "details": null,
+      "timestamp": "2025-09-09T05:31:47.455800"
+    },
+    {
+      "test": "MongoDB AI Insights",
+      "success": true,
+      "message": "Updated and retrieved AI insights",
+      "details": null,
+      "timestamp": "2025-09-09T05:31:47.458742"
+    },
+    {
+      "test": "Learning Session Tracking",
+      "success": true,
+      "message": "Created session with 2 activities",
+      "details": null,
+      "timestamp": "2025-09-09T05:31:47.464824"
+    },
+    {
+      "test": "Recommendation System",
+      "success": true,
+      "message": "Created and retrieved 3 recommendations",
+      "details": null,
+      "timestamp": "2025-09-09T05:31:47.471034"
+    },
+    {
+      "test": "Validation System",
+      "success": true,
+      "message": "Validation utilities are accessible",
+      "details": null,
+      "timestamp": "2025-09-09T05:31:47.471054"
+    },
+    {
+      "test": "API Endpoints Structure",
+      "success": true,
+      "message": "Verified 6 API view classes",
+      "details": null,
+      "timestamp": "2025-09-09T05:31:47.495420"
+    },
+    {
+      "test": "Serializers",
+      "success": true,
+      "message": "Verified 4 serializer classes",
+      "details": null,
+      "timestamp": "2025-09-09T05:31:47.495439"
+    },
+    {
+      "test": "Test Data Cleanup",
+      "success": true,
+      "message": "Cleaned up existing test data",
+      "details": null,
+      "timestamp": "2025-09-09T05:31:47.498594"
+    }
+  ]
+}

@@ -10,18 +10,8 @@ import ProtectedRoute from '../../../components/auth/ProtectedRoute';
 const AccountSettingsPage = () => {
   const user = useSelector(selectCurrentUser);
 
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <p className="text-gray-600">Loading account settings...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <ProtectedRoute>
+    <ProtectedRoute requireAuth={true} redirectTo="/login">
       <div className="p-6">
         {/* Page Header */}
         <div className="mb-8">

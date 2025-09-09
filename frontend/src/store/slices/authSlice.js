@@ -48,10 +48,18 @@ const authSlice = createSlice({
         };
       }
       
-      state.isAuthenticated = true;
+      // Only set authenticated if we have a valid access token
+      state.isAuthenticated = !!(state.tokens.access && state.user);
       state.error = null;
+      
+      console.log('🔑 setCredentials:', {
+        hasUser: !!state.user,
+        hasAccess: !!state.tokens.access,
+        isAuthenticated: state.isAuthenticated
+      });
     },
     logout: (state) => {
+      console.log('🚪 logout: Clearing authentication state');
       state.user = null;
       state.tokens = {
         access: null,
@@ -86,6 +94,14 @@ const authSlice = createSlice({
     },
     setAccessToken: (state, action) => {
       state.tokens.access = action.payload;
+      // Update isAuthenticated based on token presence
+      state.isAuthenticated = !!(state.tokens.access && state.user);
+      
+      console.log('🔑 setAccessToken:', {
+        hasUser: !!state.user,
+        hasAccess: !!state.tokens.access,
+        isAuthenticated: state.isAuthenticated
+      });
     },
     // MFA reducers
     setMFAEnrollmentData: (state, action) => {
@@ -134,6 +150,17 @@ const authSlice = createSlice({
         isResetting: false,
       };
     },
+    // Authentication initialization
+    initializeAuth: (state) => {
+      // Reset auth state on initialization - tokens will be fetched from cookies if valid
+      console.log('🔄 initializeAuth: Resetting auth state for fresh start');
+      state.isAuthenticated = false;
+      state.tokens = {
+        access: null,
+        refresh: null,
+      };
+      state.error = null;
+    },
   },
 });
 
@@ -145,6 +172,7 @@ export const {
   clearError,
   updateUser,
   setAccessToken,
+  initializeAuth,
   // MFA actions
   setMFAEnrollmentData,
   setMFAEnrolling,

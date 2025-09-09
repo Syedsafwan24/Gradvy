@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Cookie Policy Page
  * Comprehensive cookie policy and information page

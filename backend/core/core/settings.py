@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     
     # Local apps
     'apps.auth.apps.AuthConfig',
+    'apps.preferences.apps.PreferencesConfig',
 ]
 
 # Celery Configuration
@@ -156,12 +157,12 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
 }
 
-# JWT Configuration
+# JWT Configuration - Optimized to prevent race conditions and rapid logout
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),  # Extended for development
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=24),  # Extended to reduce refresh frequency
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),  # Longer refresh token lifetime
+    'ROTATE_REFRESH_TOKENS': False,  # Disable rotation to prevent race conditions
+    'BLACKLIST_AFTER_ROTATION': False,  # Disabled since rotation is off
     'UPDATE_LAST_LOGIN': True,
     'ALGORITHM': 'HS256', 
     'SIGNING_KEY': SECRET_KEY,
@@ -175,9 +176,7 @@ SIMPLE_JWT = {
     'TOKEN_TYPE_CLAIM': 'token_type',
     'TOKEN_USER_CLASS': 'rest_framework_simplejwt.models.TokenUser',
     'JTI_CLAIM': 'jti',
-    'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',
-    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
-    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
+    # Remove sliding token settings that can cause conflicts
 }
 
 AUTHENTICATION_BACKENDS = [
@@ -243,6 +242,27 @@ else:
             'PORT': config('DB_PORT', default='5433'),
         }
     }
+
+# MongoDB Configuration
+# MongoDB runs in Docker container, accessible via localhost:27017
+import mongoengine
+
+MONGODB_SETTINGS = {
+    'host': config('MONGODB_URI', default='mongodb://gradvy_app:gradvy_app_secure_2024@localhost:27017/gradvy_preferences'),
+    'connect': False,  # Don't connect immediately to avoid connection pool issues
+    'uuidRepresentation': 'standard',
+    'maxPoolSize': 20,
+    'socketTimeoutMS': 20000,
+    'connectTimeoutMS': 20000,
+    'serverSelectionTimeoutMS': 5000,
+}
+
+# Initialize MongoDB connection
+try:
+    mongoengine.connect(**MONGODB_SETTINGS)
+except Exception as e:
+    # Log connection error but don't fail startup
+    print(f"MongoDB connection warning: {e}")
 
 # Email configuration
 # Default to console backend for local development. Provide SMTP settings via env for production.

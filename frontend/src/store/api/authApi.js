@@ -24,19 +24,54 @@ const baseQuery = fetchBaseQuery({
   },
 });
 
-// Enhanced base query with automatic token refresh using cookies
+// Token refresh queue to prevent race conditions
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach(({ resolve, reject }) => {
+    if (error) {
+      reject(error);
+    } else {
+      resolve(token);
+    }
+  });
+  
+  failedQueue = [];
+};
+
+// Enhanced base query with automatic token refresh using cookies and queue management
 const baseQueryWithReauth = async (args, api, extraOptions) => {
   let result = await baseQuery(args, api, extraOptions);
 
-  // If we get a 401, try to refresh the token using cookie-based refresh
+  // If we get a 401, handle token refresh with proper queuing
   if (result?.error?.status === 401) {
+    const originalRequest = { args, api, extraOptions };
+
+    if (isRefreshing) {
+      // If refresh is already in progress, queue this request
+      console.log('Token refresh in progress, queuing request...');
+      try {
+        const token = await new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        });
+        
+        if (token) {
+          // Retry the original request with new token
+          result = await baseQuery(args, api, extraOptions);
+        }
+        return result;
+      } catch (err) {
+        return result; // Return the original 401 error
+      }
+    }
+
     console.log('Token expired, attempting refresh using cookies...');
-    
-    // First, get a fresh CSRF token if needed
-    let refreshResult;
+    isRefreshing = true;
+
     try {
       // Try to get new token using cookie-based refresh endpoint
-      refreshResult = await baseQuery(
+      const refreshResult = await baseQuery(
         {
           url: 'refresh/',
           method: 'POST',
@@ -47,22 +82,29 @@ const baseQueryWithReauth = async (args, api, extraOptions) => {
       );
 
       if (refreshResult?.data?.access) {
-        // Store the new access token in Redux (not localStorage)
+        // Store the new access token in Redux
         const { access } = refreshResult.data;
         api.dispatch(setAccessToken(access));
         
         console.log('Token refreshed successfully');
+        
+        // Process queued requests
+        processQueue(null, access);
         
         // Retry the original query with new token
         result = await baseQuery(args, api, extraOptions);
       } else {
         // Refresh failed, logout user
         console.log('Token refresh failed, logging out user...');
+        processQueue(new Error('Token refresh failed'), null);
         api.dispatch(logout());
       }
     } catch (error) {
       console.error('Token refresh error:', error);
+      processQueue(error, null);
       api.dispatch(logout());
+    } finally {
+      isRefreshing = false;
     }
   }
 

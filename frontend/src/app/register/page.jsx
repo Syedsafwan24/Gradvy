@@ -88,7 +88,7 @@ const RegisterPage = () => {
       }).unwrap();
       
       toast.success('Registration successful! Welcome to Gradvy!');
-      router.push('/dashboard');
+      router.push('/quick-onboarding');
     } catch (error) {
       console.error('Registration error:', error);
       toast.error(error?.data?.detail || error?.data?.message || 'Registration failed. Please try again.');
