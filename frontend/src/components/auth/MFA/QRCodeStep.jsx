@@ -9,9 +9,9 @@ import {
   setMFAEnrollmentData,
   selectMFAIsEnrolling,
   setMFAEnrolling
-} from '../../../store/slices/authSlice';
-import { useEnrollMFAMutation } from '../../../store/api/authApi';
-import { Button } from '../../ui/Button';
+} from '@/store/slices/authSlice';
+import { useEnrollMFAMutation } from '@/store/api/authApi';
+import { Button } from '@/components/ui/Button';
 import toast from 'react-hot-toast';
 
 const QRCodeStep = ({ onNext }) => {

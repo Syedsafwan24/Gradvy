@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { Edit, Save, X, User, Mail, Phone, MapPin, Calendar } from 'lucide-react';
-import { useUpdateProfileMutation } from '../../store/api/authApi';
+import { useUpdateProfileMutation } from '@/store/api/authApi';
 import { Button } from '../ui/Button';
 import toast from 'react-hot-toast';
 

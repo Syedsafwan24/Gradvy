@@ -6,9 +6,9 @@ import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { Shield, Loader2 } from 'lucide-react';
-import { Button } from '../../ui/Button';
-import { selectMFAEnrollmentData } from '../../../store/slices/authSlice';
-import { useConfirmMFAEnrollmentMutation } from '../../../store/api/authApi';
+import { Button } from '@/components/ui/Button';
+import { selectMFAEnrollmentData } from '@/store/slices/authSlice';
+import { useConfirmMFAEnrollmentMutation } from '@/store/api/authApi';
 import toast from 'react-hot-toast';
 
 // Validation schema

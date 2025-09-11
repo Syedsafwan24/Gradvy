@@ -201,9 +201,9 @@ class QuickOnboardingView(views.APIView):
             quick_onboarding_data = request.data.get('quick_onboarding_data', {})
             basic_info_data = request.data.get('basic_info', {})
             
-            # Update quick onboarding fields
-            preference.quick_onboarding_completed = True
+            # Update quick onboarding fields using new unified status
             preference.quick_onboarding_data = quick_onboarding_data
+            preference.mark_onboarding_completed('quick')
             
             # Create or update basic info with quick onboarding data
             from .models import BasicInfo
@@ -248,8 +248,9 @@ class QuickOnboardingView(views.APIView):
             return Response({
                 'message': 'Quick onboarding completed successfully',
                 'profile_completion_percentage': preference.profile_completion_percentage,
-                'quick_onboarding_completed': preference.quick_onboarding_completed,
-                'onboarding_completed': preference.onboarding_completed,
+                'onboarding_status': preference.onboarding_status,
+                'quick_onboarding_completed': preference.quick_onboarding_completed,  # Compatibility
+                'onboarding_completed': preference.onboarding_completed,  # Compatibility
                 'user_id': preference.user_id,
                 'basic_info': {
                     'learning_goals': preference.basic_info.learning_goals if preference.basic_info else [],
@@ -452,6 +453,57 @@ class PreferenceChoicesView(views.APIView):
         }
         
         return Response(choices)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class OnboardingProgressView(views.APIView):
+    """
+    Save incremental onboarding progress for the current user.
+    Stores progress data under UserPreference.custom_preferences.onboarding_progress
+    without requiring the full onboarding payload.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        try:
+            pref = UserPreference.get_by_user_id(request.user.id)
+            if not pref:
+                pref = UserPreference.create_for_user(request.user.id)
+
+            payload = request.data or {}
+            step = payload.get('step')
+            step_data = payload.get('data', {})
+
+            # Initialize progress structure
+            progress = pref.custom_preferences.get('onboarding_progress', {})
+            steps_store = progress.get('steps', {})
+
+            if step:
+                steps_store[str(step)] = step_data
+                progress['last_step'] = step
+            else:
+                # If no explicit step provided, still persist data
+                progress['last_updated_payload'] = step_data
+
+            progress['updated_at'] = datetime.utcnow().isoformat()
+            progress['steps'] = steps_store
+
+            # Persist back to custom preferences
+            pref.custom_preferences['onboarding_progress'] = progress
+            pref.save()
+
+            return Response({
+                'success': True,
+                'message': 'Progress saved successfully',
+                'onboarding_progress': progress
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error saving onboarding progress for user {request.user.id}: {str(e)}")
+            return Response({
+                'message': 'Failed to save onboarding progress',
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # =============================================================================

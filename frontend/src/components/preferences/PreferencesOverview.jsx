@@ -53,7 +53,7 @@ export default function PreferencesOverview({ preferences, loading, onPreference
             Complete the onboarding process to get personalized recommendations.
           </p>
           <Button 
-            onClick={() => window.location.href = '/onboarding'}
+            onClick={() => window.location.href = '/app/onboarding'}
             className="bg-blue-600 hover:bg-blue-700"
           >
             Complete Onboarding
@@ -152,7 +152,7 @@ export default function PreferencesOverview({ preferences, loading, onPreference
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => window.location.href = '/onboarding'}
+                      onClick={() => window.location.href = '/app/onboarding'}
                       className="w-full justify-start"
                     >
                       <Edit className="h-4 w-4 mr-2" />
@@ -387,7 +387,7 @@ export default function PreferencesOverview({ preferences, loading, onPreference
                   <Button 
                     size="sm" 
                     className="mt-3 bg-yellow-600 hover:bg-yellow-700"
-                    onClick={() => window.location.href = '/onboarding'}
+                    onClick={() => window.location.href = '/app/onboarding'}
                   >
                     Complete Profile
                   </Button>

@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Settings, Shield, Key, LogOut } from 'lucide-react';
 import { Button } from '../ui/Button';
-import { useLogoutMutation } from '../../store/api/authApi';
+import { useLogoutMutation } from '@/store/api/authApi';
 import toast from 'react-hot-toast';
 
 const ProfileActions = ({ user }) => {
@@ -29,7 +29,7 @@ const ProfileActions = ({ user }) => {
       icon: Settings,
       title: 'Account Settings',
       description: 'Manage your account preferences and privacy settings',
-      action: () => router.push('/settings'),
+      action: () => router.push('/app/settings'),
       variant: 'default'
     },
     {
@@ -38,14 +38,14 @@ const ProfileActions = ({ user }) => {
       description: user?.is_mfa_enabled 
         ? 'View backup codes or disable two-factor authentication'
         : 'Secure your account with two-factor authentication',
-      action: () => router.push('/settings/security'),
+      action: () => router.push('/app/settings/security'),
       variant: user?.is_mfa_enabled ? 'outline' : 'default'
     },
     {
       icon: Key,
       title: 'Change Password',
       description: 'Update your account password for better security',
-      action: () => router.push('/settings/security'),
+      action: () => router.push('/app/settings/security'),
       variant: 'outline'
     }
   ];

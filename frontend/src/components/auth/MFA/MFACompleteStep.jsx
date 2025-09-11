@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { CheckCircle, Shield, Key, Download } from 'lucide-react';
-import { Button } from '../../ui/Button';
+import { Button } from '@/components/ui/Button';
 
 const MFACompleteStep = ({ onComplete }) => {
   return (

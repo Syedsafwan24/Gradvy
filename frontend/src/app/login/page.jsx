@@ -8,12 +8,13 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, Mail, Lock, Loader2 } from 'lucide-react';
-import { useLoginMutation, useVerifyMFAMutation } from '../../store/api/authApi';
+import { useLoginMutation, useVerifyMFAMutation } from '@/store/api/authApi';
 import { useSelector } from 'react-redux';
-import { selectIsAuthenticated, selectAuthError } from '../../store/slices/authSlice';
-import { Button } from '../../components/ui/Button';
-import { Card } from '../../components/ui/Card';
+import { selectIsAuthenticated, selectAuthError } from '@/store/slices/authSlice';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import toast from 'react-hot-toast';
+import { normalizeApiError, applyFieldErrorsToForm } from '@/utils/apiErrors';
 
 // Validation schema
 const loginSchema = yup.object({
@@ -52,6 +53,7 @@ const LoginPage = () => {
     register: registerLogin,
     handleSubmit: handleLoginSubmit,
     formState: { errors: loginErrors },
+    setError: setLoginError,
     reset: resetLogin,
   } = useForm({
     resolver: yupResolver(loginSchema),
@@ -70,6 +72,7 @@ const LoginPage = () => {
     reset: resetMFA,
     watch: watchMFA,
     setValue: setMFAValue,
+    setError: setMFAError,
   } = useForm({
     resolver: yupResolver(mfaSchema),
     defaultValues: {
@@ -105,7 +108,7 @@ const LoginPage = () => {
     setFormsReady(true);
     
     if (isAuthenticated) {
-      router.push('/dashboard');
+      router.push('/app/dashboard');
     }
   }, [isAuthenticated, router]);
 
@@ -119,11 +122,13 @@ const LoginPage = () => {
         toast.success('Please enter your MFA code');
       } else {
         toast.success('Login successful!');
-        router.push('/dashboard');
+        router.push('/app/dashboard');
       }
     } catch (error) {
-      console.error('Login error:', error);
-      toast.error(error?.data?.detail || error?.data?.message || 'Login failed. Please try again.');
+      const e = normalizeApiError(error);
+      applyFieldErrorsToForm(e, setLoginError);
+      // Show precise top-level message
+      toast.error(e.message);
     }
   };
 
@@ -135,10 +140,11 @@ const LoginPage = () => {
       }).unwrap();
       
       toast.success('Login successful!');
-      router.push('/dashboard');
+      router.push('/app/dashboard');
     } catch (error) {
-      console.error('MFA error:', error);
-      toast.error(error?.data?.error || 'Invalid MFA code. Please try again.');
+      const e = normalizeApiError(error);
+      applyFieldErrorsToForm(e, setMFAError);
+      toast.error(e.message);
     }
   };
 

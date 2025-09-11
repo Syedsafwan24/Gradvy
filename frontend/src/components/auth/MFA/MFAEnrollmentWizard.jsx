@@ -12,9 +12,9 @@ import {
   setMFACurrentStep,
   setMFAEnrolling,
   clearMFAData 
-} from '../../../store/slices/authSlice';
-import { Button } from '../../ui/Button';
-import { Card } from '../../ui/Card';
+} from '@/store/slices/authSlice';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import QRCodeStep from './QRCodeStep';
 import TOTPVerificationStep from './TOTPVerificationStep';
 import BackupCodesStep from './BackupCodesStep';

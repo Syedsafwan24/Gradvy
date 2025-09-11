@@ -7,7 +7,7 @@
 import { useEffect } from 'react';
 import CookieConsentBanner from './CookieConsentBanner';
 import CookiePreferencesModal from './CookiePreferencesModal';
-import { initializeCookieManagement } from '../../lib/cookieUtils';
+import { initializeCookieManagement } from '@/lib/cookieUtils';
 
 const CookieManager = () => {
   useEffect(() => {

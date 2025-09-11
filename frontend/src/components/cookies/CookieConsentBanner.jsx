@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '../ui/Button';
-import { CookieBanner, isCookieConsentSet } from '../../lib/cookieUtils';
+import { CookieBanner, isCookieConsentSet } from '@/lib/cookieUtils';
 
 const CookieConsentBanner = () => {
   const [isVisible, setIsVisible] = useState(false);

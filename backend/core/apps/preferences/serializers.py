@@ -191,14 +191,15 @@ class UserPreferenceSerializer(serializers.Serializer):
             'custom_preferences': instance.custom_preferences,
             
             # Onboarding and Profile Completion Fields (CRITICAL!)
-            'onboarding_completed': instance.onboarding_completed,
+            'onboarding_status': instance.onboarding_status,  # NEW: Unified status field
+            'onboarding_completed': instance.onboarding_completed,  # Compatibility
             'profile_completion_percentage': instance.profile_completion_percentage,
             'onboarding_completed_at': instance.onboarding_completed_at,
             'last_completion_prompt_shown': instance.last_completion_prompt_shown,
             'completion_prompt_dismissed_count': instance.completion_prompt_dismissed_count,
             
             # Quick onboarding fields
-            'quick_onboarding_completed': instance.quick_onboarding_completed,
+            'quick_onboarding_completed': instance.quick_onboarding_completed,  # Compatibility
             'quick_onboarding_data': instance.quick_onboarding_data,
             
             # Gamification fields
@@ -313,7 +314,9 @@ class OnboardingSerializer(serializers.Serializer):
         # Add content preferences
         if content_prefs_data:
             preference.content_preferences = ContentPreferences(**content_prefs_data)
-            preference.save()
+        
+        # Mark full onboarding as completed
+        preference.mark_onboarding_completed('full')
         
         # Log onboarding completion
         preference.add_interaction(

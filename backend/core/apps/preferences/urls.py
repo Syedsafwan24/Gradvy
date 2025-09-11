@@ -25,6 +25,7 @@ urlpatterns = [
     
     # Utility endpoints
     path('choices/', views.PreferenceChoicesView.as_view(), name='preference_choices'),
+    path('onboarding-progress/', views.OnboardingProgressView.as_view(), name='onboarding_progress'),
     
     # Privacy and data management
     path('privacy-overview/', views.privacy_overview, name='privacy_overview'),

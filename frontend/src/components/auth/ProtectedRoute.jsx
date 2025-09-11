@@ -93,7 +93,7 @@ const ProtectedRoute = ({
           if (isAuthenticated && accessToken) {
             console.log('🔓 ProtectedRoute: User already authenticated, redirecting to dashboard');
             const savedPath = typeof window !== 'undefined' ? sessionStorage.getItem('redirectPath') : null;
-            const redirectPath = savedPath || '/dashboard';
+            const redirectPath = savedPath || '/app/dashboard';
             if (typeof window !== 'undefined') {
               sessionStorage.removeItem('redirectPath');
             }

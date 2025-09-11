@@ -7,14 +7,14 @@ import {
   selectCurrentUser,
   selectMFABackupCodes,
   setMFABackupCodes 
-} from '../../../store/slices/authSlice';
+} from '@/store/slices/authSlice';
 import { 
   useDisableMFAMutation,
   useGetMFAStatusQuery,
   useGetMFABackupCodesQuery 
-} from '../../../store/api/authApi';
-import { Button } from '../../ui/Button';
-import { Card } from '../../ui/Card';
+} from '@/store/api/authApi';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import MFAEnrollmentWizard from './MFAEnrollmentWizard';
 import BackupCodesManager from './BackupCodesManager';
 import toast from 'react-hot-toast';

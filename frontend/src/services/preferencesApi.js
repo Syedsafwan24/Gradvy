@@ -4,17 +4,22 @@
  */
 
 import { apiSlice } from '@/store/api/apiSlice';
+import { normalizeApiError } from '@/utils/apiErrors';
 
 export const preferencesApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getUserPreferences: builder.query({
       query: () => '/preferences/',
       providesTags: ['UserPreferences'],
-      transformErrorResponse: (response) => ({
-        status: response.status,
-        message: response.data?.error || 'Failed to fetch preferences',
-        onboarding_required: response.data?.onboarding_required || false
-      })
+      transformErrorResponse: (response) => {
+        const e = normalizeApiError(response);
+        return {
+          status: e.status,
+          message: e.message,
+          fieldErrors: e.fieldErrors,
+          onboarding_required: response.data?.onboarding_required || false
+        };
+      }
     }),
     
     createUserPreferences: builder.mutation({
@@ -28,7 +33,8 @@ export const preferencesApi = apiSlice.injectEndpoints({
         success: true,
         data: response,
         message: 'Preferences created successfully'
-      })
+      }),
+      transformErrorResponse: (response) => normalizeApiError(response)
     }),
     
     updateUserPreferences: builder.mutation({
@@ -42,7 +48,8 @@ export const preferencesApi = apiSlice.injectEndpoints({
         success: true,
         data: response,
         message: 'Preferences updated successfully'
-      })
+      }),
+      transformErrorResponse: (response) => normalizeApiError(response)
     }),
     
     partialUpdateUserPreferences: builder.mutation({
@@ -56,7 +63,8 @@ export const preferencesApi = apiSlice.injectEndpoints({
         success: true,
         data: response,
         message: 'Preferences updated successfully'
-      })
+      }),
+      transformErrorResponse: (response) => normalizeApiError(response)
     }),
     
     submitOnboarding: builder.mutation({
@@ -70,7 +78,8 @@ export const preferencesApi = apiSlice.injectEndpoints({
         success: true,
         data: response,
         message: response.message || 'Onboarding completed successfully'
-      })
+      }),
+      transformErrorResponse: (response) => normalizeApiError(response)
     }),
     
     submitQuickOnboarding: builder.mutation({
@@ -87,11 +96,7 @@ export const preferencesApi = apiSlice.injectEndpoints({
         profile_completion_percentage: response.profile_completion_percentage,
         quick_onboarding_completed: response.quick_onboarding_completed
       }),
-      transformErrorResponse: (response) => ({
-        status: response.status,
-        message: response.data?.error || response.data?.details || 'Failed to complete quick onboarding',
-        details: response.data
-      })
+      transformErrorResponse: (response) => normalizeApiError(response)
     }),
     
     logInteraction: builder.mutation({
@@ -104,7 +109,8 @@ export const preferencesApi = apiSlice.injectEndpoints({
         success: response.success,
         interaction_type: response.interaction_type,
         timestamp: response.timestamp
-      })
+      }),
+      transformErrorResponse: (response) => normalizeApiError(response)
     }),
     
     getUserAnalytics: builder.query({
@@ -113,7 +119,8 @@ export const preferencesApi = apiSlice.injectEndpoints({
       transformResponse: (response) => ({
         analytics: response.analytics,
         generated_at: response.generated_at
-      })
+      }),
+      transformErrorResponse: (response) => normalizeApiError(response)
     }),
     
     getPersonalizedRecommendations: builder.query({
@@ -126,7 +133,8 @@ export const preferencesApi = apiSlice.injectEndpoints({
         recommendations: response.recommendations,
         source: response.source,
         message: response.message
-      })
+      }),
+      transformErrorResponse: (response) => normalizeApiError(response)
     }),
     
     generateRecommendations: builder.mutation({
@@ -140,7 +148,8 @@ export const preferencesApi = apiSlice.injectEndpoints({
         recommendations: response.recommendations,
         source: response.source,
         message: response.message || 'Recommendations generated successfully'
-      })
+      }),
+      transformErrorResponse: (response) => normalizeApiError(response)
     }),
     
     getPreferenceChoices: builder.query({
@@ -161,7 +170,8 @@ export const preferencesApi = apiSlice.injectEndpoints({
         success: true,
         data: response,
         message: 'Progress saved successfully'
-      })
+      }),
+      transformErrorResponse: (response) => normalizeApiError(response)
     })
   }),
 });

@@ -8,12 +8,13 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, Mail, Lock, User, Loader2 } from 'lucide-react';
-import { useRegisterMutation } from '../../store/api/authApi';
+import { useRegisterMutation } from '@/store/api/authApi';
 import { useSelector } from 'react-redux';
-import { selectIsAuthenticated } from '../../store/slices/authSlice';
-import { Button } from '../../components/ui/Button';
-import { Card } from '../../components/ui/Card';
+import { selectIsAuthenticated } from '@/store/slices/authSlice';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import toast from 'react-hot-toast';
+import { normalizeApiError, applyFieldErrorsToForm } from '@/utils/apiErrors';
 
 // Validation schema
 const registerSchema = yup.object({
@@ -54,6 +55,7 @@ const RegisterPage = () => {
     register: registerField,
     handleSubmit,
     formState: { errors, isValid },
+    setError,
     watch,
   } = useForm({
     resolver: yupResolver(registerSchema),
@@ -74,7 +76,7 @@ const RegisterPage = () => {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/dashboard');
+      router.push('/app/dashboard');
     }
   }, [isAuthenticated, router]);
 
@@ -91,8 +93,9 @@ const RegisterPage = () => {
       toast.success('Registration successful! Welcome to Gradvy!');
       router.push('/quick-onboarding');
     } catch (error) {
-      console.error('Registration error:', error);
-      toast.error(error?.data?.detail || error?.data?.message || 'Registration failed. Please try again.');
+      const e = normalizeApiError(error);
+      applyFieldErrorsToForm(e, setError);
+      toast.error(e.message);
     }
   };
 

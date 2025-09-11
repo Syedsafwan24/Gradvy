@@ -22,6 +22,7 @@ import {
   Trash2,
   Info
 } from 'lucide-react';
+import { normalizeApiError } from '@/utils/apiErrors';
 
 const ConsentManagement = ({ data, onUpdate }) => {
   const [consents, setConsents] = useState([]);
@@ -41,13 +42,16 @@ const ConsentManagement = ({ data, onUpdate }) => {
       const response = await fetch(`/api/preferences/consent/${consentId}/`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ granted }),
       });
 
-      if (!response.ok) throw new Error('Failed to update consent');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw normalizeApiError({ status: response.status, data });
+      }
 
       const result = await response.json();
       
@@ -64,10 +68,11 @@ const ConsentManagement = ({ data, onUpdate }) => {
       });
 
     } catch (error) {
-      console.error('Error updating consent:', error);
+      const e = normalizeApiError(error);
+      console.error('Error updating consent:', e);
       toast({
         title: 'Error',
-        description: 'Failed to update consent. Please try again.',
+        description: e.message,
         variant: 'destructive',
       });
     } finally {
@@ -84,12 +89,14 @@ const ConsentManagement = ({ data, onUpdate }) => {
     try {
       const response = await fetch('/api/preferences/consent/revoke-all/', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
       });
 
-      if (!response.ok) throw new Error('Failed to revoke consents');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw normalizeApiError({ status: response.status, data });
+      }
 
       const result = await response.json();
       setConsents(result.consent_records);
@@ -102,10 +109,11 @@ const ConsentManagement = ({ data, onUpdate }) => {
       });
 
     } catch (error) {
-      console.error('Error revoking consents:', error);
+      const e = normalizeApiError(error);
+      console.error('Error revoking consents:', e);
       toast({
         title: 'Error',
-        description: 'Failed to revoke consents. Please try again.',
+        description: e.message,
         variant: 'destructive',
       });
     } finally {
@@ -117,12 +125,13 @@ const ConsentManagement = ({ data, onUpdate }) => {
     try {
       const response = await fetch('/api/preferences/consent-history/download/', {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-        },
+        credentials: 'include',
       });
 
-      if (!response.ok) throw new Error('Failed to download consent history');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw normalizeApiError({ status: response.status, data });
+      }
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -138,10 +147,11 @@ const ConsentManagement = ({ data, onUpdate }) => {
       });
 
     } catch (error) {
-      console.error('Error downloading consent history:', error);
+      const e = normalizeApiError(error);
+      console.error('Error downloading consent history:', e);
       toast({
         title: 'Error',
-        description: 'Failed to download consent history.',
+        description: e.message,
         variant: 'destructive',
       });
     }

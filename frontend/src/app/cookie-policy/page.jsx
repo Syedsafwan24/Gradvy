@@ -7,8 +7,8 @@
 
 import { useState } from 'react';
 import { Shield, BarChart3, Zap, Target, Settings, ExternalLink } from 'lucide-react';
-import { Button } from '../../components/ui/Button';
-import { COOKIE_POLICY_DATA, COOKIE_TYPES, getCookiePreferences, CookieBanner } from '../../lib/cookieUtils';
+import { Button } from '@/components/ui/Button';
+import { COOKIE_POLICY_DATA, COOKIE_TYPES, getCookiePreferences, CookieBanner } from '@/lib/cookieUtils';
 
 const CookiePolicyPage = () => {
   const [preferences] = useState(getCookiePreferences());

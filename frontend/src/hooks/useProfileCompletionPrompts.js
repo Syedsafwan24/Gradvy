@@ -38,8 +38,7 @@ export const useProfileCompletionPrompts = (user) => {
         console.log('No preferences found (404), defaulting to incomplete state');
         return {
           profile_completion_percentage: 0,
-          onboarding_completed: false,
-          quick_onboarding_completed: false
+          onboarding_status: 'not_started'
         };
       }
       
@@ -64,15 +63,21 @@ export const useProfileCompletionPrompts = (user) => {
 
   const checkAndShowPrompts = (prefs) => {
     const completionPercentage = prefs.profile_completion_percentage || 0;
+    const onboardingStatus = prefs.onboarding_status || 'not_started';
     const now = Date.now();
     
     console.log('checkAndShowPrompts called with:', {
       completionPercentage,
-      quick_onboarding_completed: prefs.quick_onboarding_completed,
-      onboarding_completed: prefs.onboarding_completed,
+      onboarding_status: onboardingStatus,
       promptShown: promptShownRef.current,
       timeSinceLastPrompt: now - lastPromptTimeRef.current
     });
+
+    // Don't show prompts if onboarding is fully completed
+    if (onboardingStatus === 'full_completed') {
+      console.log('Full onboarding completed, not showing prompts');
+      return;
+    }
 
     // Don't show prompts if profile is sufficiently complete
     if (completionPercentage >= 80) {
@@ -93,16 +98,16 @@ export const useProfileCompletionPrompts = (user) => {
       currentToastRef.current = null;
     }
 
-    // Show different prompts based on completion status with debounce
+    // Show different prompts based on onboarding status with debounce
     const promptTimeout = setTimeout(() => {
       if (!promptShownRef.current) {
         promptShownRef.current = true;
         lastPromptTimeRef.current = now;
         
-        if (!prefs.quick_onboarding_completed) {
+        if (onboardingStatus === 'not_started') {
           console.log('Showing quick onboarding prompt');
           showQuickOnboardingPrompt();
-        } else if (!prefs.onboarding_completed && completionPercentage < 50) {
+        } else if (onboardingStatus === 'quick_completed' && completionPercentage < 50) {
           console.log('Showing full onboarding prompt');
           showFullOnboardingPrompt();
         } else if (completionPercentage < 80) {
@@ -143,7 +148,7 @@ export const useProfileCompletionPrompts = (user) => {
             onClick={() => {
               toast.dismiss(t.id);
               currentToastRef.current = null;
-              router.push('/quick-onboarding');
+              router.push('/app/quick-onboarding');
               logPromptInteraction('quick_onboarding', 'clicked');
             }}
             className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-blue-600 hover:text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -197,7 +202,7 @@ export const useProfileCompletionPrompts = (user) => {
             onClick={() => {
               toast.dismiss(t.id);
               currentToastRef.current = null;
-              router.push('/onboarding');
+              router.push('/app/onboarding');
               logPromptInteraction('full_onboarding', 'clicked');
             }}
             className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-blue-600 hover:text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -271,7 +276,7 @@ export const useProfileCompletionPrompts = (user) => {
             onClick={() => {
               toast.dismiss(t.id);
               currentToastRef.current = null;
-              router.push('/preferences');
+              router.push('/app/preferences');
               logPromptInteraction('profile_completion', 'clicked');
             }}
             className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-blue-600 hover:text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"

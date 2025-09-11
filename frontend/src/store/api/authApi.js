@@ -1,6 +1,7 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { setCredentials, logout, setAccessToken, updateUser } from '../slices/authSlice';
 import { getCSRFToken } from '../../lib/cookieUtils';
+import { normalizeApiError } from '../../utils/apiErrors';
 
 // Base query with automatic token handling and CSRF protection
 const baseQuery = fetchBaseQuery({
@@ -124,6 +125,7 @@ export const authApi = createApi({
         method: 'POST',
         body: credentials,
       }),
+      transformErrorResponse: (response) => normalizeApiError(response),
       async onQueryStarted(arg, { dispatch, queryFulfilled }) {
         try {
           const { data } = await queryFulfilled;
@@ -138,7 +140,8 @@ export const authApi = createApi({
             }));
           }
         } catch (error) {
-          console.error('Login failed:', error);
+          const e = normalizeApiError(error?.error || error);
+          console.error('Login error:', e);
         }
       },
       invalidatesTags: ['User'],
@@ -150,6 +153,7 @@ export const authApi = createApi({
         method: 'POST',
         body: userData,
       }),
+      transformErrorResponse: (response) => normalizeApiError(response),
       async onQueryStarted(arg, { dispatch, queryFulfilled }) {
         try {
           const { data } = await queryFulfilled;
@@ -164,7 +168,8 @@ export const authApi = createApi({
             }));
           }
         } catch (error) {
-          console.error('Registration failed:', error);
+          const e = normalizeApiError(error?.error || error);
+          console.error('Registration error:', e);
         }
       },
       invalidatesTags: ['User'],
@@ -179,7 +184,8 @@ export const authApi = createApi({
         try {
           await queryFulfilled;
         } catch (error) {
-          console.error('Logout error:', error);
+          const e = normalizeApiError(error?.error || error);
+          console.error('Logout error:', e);
         } finally {
           // Always clear credentials on logout attempt
           dispatch(logout());
@@ -217,7 +223,8 @@ export const authApi = createApi({
           // Update last password change timestamp if available from response
           // Backend doesn't return user data, so we just ensure cache consistency
         } catch (error) {
-          console.error('Password change failed:', error);
+          const e = normalizeApiError(error?.error || error);
+          console.error('Password change error:', e);
         }
       },
       invalidatesTags: ['User'],
@@ -230,6 +237,7 @@ export const authApi = createApi({
         method: 'POST',
         body: { code, mfa_token },
       }),
+      transformErrorResponse: (response) => normalizeApiError(response),
       async onQueryStarted(arg, { dispatch, queryFulfilled }) {
         try {
           const { data } = await queryFulfilled;
@@ -244,7 +252,8 @@ export const authApi = createApi({
             }));
           }
         } catch (error) {
-          console.error('MFA verification failed:', error);
+          const e = normalizeApiError(error?.error || error);
+          console.error('MFA verification error:', e);
         }
       },
       invalidatesTags: ['User', 'MFA'],
@@ -270,7 +279,8 @@ export const authApi = createApi({
           // Update user's MFA status in Redux immediately
           dispatch(updateUser({ is_mfa_enabled: true, mfa_enrolled: true }));
         } catch (error) {
-          console.error('MFA enrollment failed:', error);
+          const e = normalizeApiError(error?.error || error);
+          console.error('MFA enrollment error:', e);
         }
       },
       invalidatesTags: ['User', 'MFA'],
@@ -288,7 +298,8 @@ export const authApi = createApi({
           // Update user's MFA status in Redux immediately
           dispatch(updateUser({ is_mfa_enabled: false, mfa_enrolled: false }));
         } catch (error) {
-          console.error('MFA disable failed:', error);
+          const e = normalizeApiError(error?.error || error);
+          console.error('MFA disable error:', e);
         }
       },
       invalidatesTags: ['User', 'MFA'],
@@ -321,7 +332,8 @@ export const authApi = createApi({
           // Always sync fresh API data with Redux on every profile fetch
           dispatch(updateUser(data));
         } catch (error) {
-          console.error('Profile fetch failed:', error);
+          const e = normalizeApiError(error?.error || error);
+          console.error('Profile fetch error:', e);
         }
       },
       providesTags: ['User'],
@@ -339,7 +351,8 @@ export const authApi = createApi({
           // Update Redux store with fresh user data
           dispatch(updateUser(data));
         } catch (error) {
-          console.error('Profile update failed:', error);
+          const e = normalizeApiError(error?.error || error);
+          console.error('Profile update error:', e);
         }
       },
       invalidatesTags: ['User'],

@@ -11,7 +11,7 @@ import {
   EyeOff, 
   CheckCircle
 } from 'lucide-react';
-import { useChangePasswordMutation } from '../../store/api/authApi';
+import { useChangePasswordMutation } from '@/store/api/authApi';
 import { Button } from '../ui/Button';
 import toast from 'react-hot-toast';
 

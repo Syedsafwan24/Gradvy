@@ -7,9 +7,9 @@ import * as yup from 'yup';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Mail, ArrowLeft, Loader2 } from 'lucide-react';
-import { useRequestPasswordResetMutation } from '../../store/api/authApi';
-import { Button } from '../../components/ui/Button';
-import { Card } from '../../components/ui/Card';
+import { useRequestPasswordResetMutation } from '@/store/api/authApi';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import toast from 'react-hot-toast';
 
 // Validation schema

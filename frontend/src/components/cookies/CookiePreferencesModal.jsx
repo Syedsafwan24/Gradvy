@@ -12,7 +12,7 @@ import {
   setCookieConsent,
   COOKIE_TYPES,
   COOKIE_POLICY_DATA
-} from '../../lib/cookieUtils';
+} from '@/lib/cookieUtils';
 
 const CookiePreferencesModal = () => {
   const [isOpen, setIsOpen] = useState(false);

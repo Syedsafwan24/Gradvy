@@ -9,7 +9,7 @@ export const onboardingApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     submitOnboarding: builder.mutation({
       query: (onboardingData) => ({
-        url: '/api/preferences/onboarding/',
+        url: '/preferences/onboarding/',
         method: 'POST',
         body: onboardingData,
       }),
@@ -17,13 +17,13 @@ export const onboardingApi = apiSlice.injectEndpoints({
     }),
     
     getUserPreferences: builder.query({
-      query: () => '/api/preferences/user-preferences/',
+      query: () => '/preferences/',
       providesTags: ['UserPreferences'],
     }),
     
     updateUserPreferences: builder.mutation({
       query: (preferences) => ({
-        url: '/api/preferences/user-preferences/',
+        url: '/preferences/',
         method: 'PUT',
         body: preferences,
       }),
@@ -32,7 +32,7 @@ export const onboardingApi = apiSlice.injectEndpoints({
     
     logInteraction: builder.mutation({
       query: (interactionData) => ({
-        url: '/api/preferences/interactions/',
+        url: '/preferences/interactions/',
         method: 'POST',
         body: interactionData,
       }),
@@ -40,14 +40,14 @@ export const onboardingApi = apiSlice.injectEndpoints({
     
     getRecommendations: builder.query({
       query: (params = {}) => ({
-        url: '/api/preferences/recommendations/',
+        url: '/preferences/recommendations/',
         params,
       }),
       providesTags: ['Recommendations'],
     }),
     
     getUserAnalytics: builder.query({
-      query: (timeframe = '30d') => `/api/preferences/analytics/?timeframe=${timeframe}`,
+      query: (timeframe = '30d') => `/preferences/analytics/?timeframe=${timeframe}`,
       providesTags: ['Analytics'],
     }),
   }),

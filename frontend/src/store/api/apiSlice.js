@@ -1,6 +1,7 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { setCredentials, logout } from '../slices/authSlice';
 import { getCSRFToken } from '../../lib/cookieUtils';
+import { normalizeApiError } from '../../utils/apiErrors';
 
 // Base query with automatic token handling and CSRF protection
 const baseQuery = fetchBaseQuery({
@@ -98,6 +99,12 @@ const baseQueryWithReauth = async (args, api, extraOptions) => {
     }
   }
 
+  // Attach normalized error for consistent handling downstream
+  if (result?.error) {
+    try {
+      result.error.normalized = normalizeApiError(result.error);
+    } catch {}
+  }
   return result;
 };
 

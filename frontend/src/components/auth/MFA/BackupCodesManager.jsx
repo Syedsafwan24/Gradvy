@@ -17,13 +17,13 @@ import {
 import { 
   selectMFABackupCodes,
   setMFABackupCodes 
-} from '../../../store/slices/authSlice';
+} from '@/store/slices/authSlice';
 import { 
   useGetMFABackupCodesQuery,
   useRegenerateMFABackupCodesMutation 
-} from '../../../store/api/authApi';
-import { Button } from '../../ui/Button';
-import { Card } from '../../ui/Card';
+} from '@/store/api/authApi';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import toast from 'react-hot-toast';
 
 const BackupCodesManager = ({ 

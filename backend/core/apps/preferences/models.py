@@ -446,15 +446,15 @@ class UserPreference(Document):
     custom_preferences = DictField(default=dict)
     feature_flags = DictField(default=dict)  # For A/B testing and gradual rollouts
     
-    # Onboarding and Profile Completion Tracking
-    onboarding_completed = BooleanField(default=False)
+    # Onboarding Status Tracking (unified approach)
+    ONBOARDING_STATUS_CHOICES = ['not_started', 'quick_completed', 'full_completed']
+    onboarding_status = StringField(choices=ONBOARDING_STATUS_CHOICES, default='not_started')
     profile_completion_percentage = FloatField(min_value=0.0, max_value=100.0, default=0.0)
     onboarding_completed_at = DateTimeField()
     last_completion_prompt_shown = DateTimeField()
     completion_prompt_dismissed_count = IntField(default=0)
     
-    # Quick onboarding for new users
-    quick_onboarding_completed = BooleanField(default=False)
+    # Quick onboarding data storage
     quick_onboarding_data = DictField(default=dict)
     
     # Gamification elements
@@ -572,9 +572,8 @@ class UserPreference(Document):
         self.save()
     
     def calculate_profile_completion(self) -> float:
-        """Calculate profile completion percentage based on filled fields"""
+        """Calculate profile completion percentage based on filled fields and onboarding status"""
         completion_score = 0.0
-        total_weight = 100.0
         
         # Basic Info (40% weight)
         if self.basic_info:
@@ -602,9 +601,11 @@ class UserPreference(Document):
                     content_score += 1
             completion_score += (content_score / len(content_fields)) * 35
         
-        # Quick Onboarding (15% weight)
-        if self.quick_onboarding_completed:
-            completion_score += 15
+        # Onboarding Status (15% weight)
+        if self.onboarding_status == 'quick_completed':
+            completion_score += 10  # Partial points for quick onboarding
+        elif self.onboarding_status == 'full_completed':
+            completion_score += 15  # Full points for complete onboarding
         
         # Profile activity (10% weight)
         if len(self.interactions) > 0:
@@ -617,9 +618,12 @@ class UserPreference(Document):
         self.profile_completion_percentage = self.calculate_profile_completion()
         self.save()
     
-    def mark_onboarding_completed(self):
+    def mark_onboarding_completed(self, onboarding_type='full'):
         """Mark onboarding as completed and update completion time"""
-        self.onboarding_completed = True
+        if onboarding_type == 'quick':
+            self.onboarding_status = 'quick_completed'
+        else:
+            self.onboarding_status = 'full_completed'
         self.onboarding_completed_at = datetime.utcnow()
         self.update_completion_percentage()
     
@@ -630,7 +634,12 @@ class UserPreference(Document):
             self.save()
     
     def should_show_completion_prompt(self, hours_interval: int = 24) -> bool:
-        """Check if we should show completion prompt based on time and dismissal count"""
+        """Check if we should show completion prompt based on onboarding status and dismissal count"""
+        # Don't show prompts if onboarding is fully completed
+        if self.onboarding_status == 'full_completed':
+            return False
+        
+        # Don't show prompts if profile is sufficiently complete
         if self.profile_completion_percentage >= 80.0:
             return False
         
@@ -901,6 +910,27 @@ class UserPreference(Document):
             'last_privacy_update': self.privacy_settings.last_updated
         }
     
+    # Compatibility properties for legacy code that uses old boolean fields
+    @property
+    def onboarding_completed(self):
+        """Compatibility property for legacy code"""
+        return self.onboarding_status in ['quick_completed', 'full_completed']
+    
+    @property
+    def quick_onboarding_completed(self):
+        """Compatibility property for legacy code"""
+        return self.onboarding_status in ['quick_completed', 'full_completed']
+    
+    @property
+    def is_onboarding_complete(self):
+        """Check if any onboarding has been completed"""
+        return self.onboarding_status != 'not_started'
+    
+    @property
+    def is_full_onboarding_complete(self):
+        """Check if full onboarding has been completed"""
+        return self.onboarding_status == 'full_completed'
+
     def __str__(self):
         privacy_status = "with privacy controls" if self.privacy_settings else "no privacy config"
         return f"UserPreference(user_id={self.user_id}, {privacy_status})"

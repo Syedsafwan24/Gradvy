@@ -73,15 +73,15 @@ export default function ProfileCompletionCard({
   };
 
   const handleQuickOnboarding = () => {
-    router.push('/quick-onboarding');
+    router.push('/app/quick-onboarding');
   };
 
   const handleFullOnboarding = () => {
-    router.push('/onboarding');
+    router.push('/app/onboarding');
   };
 
   const handleCompleteProfile = () => {
-    router.push('/preferences');
+    router.push('/app/preferences');
   };
 
   // Don't show if dismissed and not forced

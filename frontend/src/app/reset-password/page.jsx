@@ -8,9 +8,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, Lock, ArrowLeft, Loader2, CheckCircle } from 'lucide-react';
-import { useConfirmPasswordResetMutation } from '../../store/api/authApi';
-import { Button } from '../../components/ui/Button';
-import { Card } from '../../components/ui/Card';
+import { useConfirmPasswordResetMutation } from '@/store/api/authApi';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import toast from 'react-hot-toast';
 
 // Validation schema
