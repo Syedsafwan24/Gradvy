@@ -6,7 +6,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { Edit, Save, X, User, Mail, Phone, MapPin, Calendar } from 'lucide-react';
 import { useUpdateProfileMutation } from '@/store/api/authApi';
-import { Button } from '../ui/Button';
+import { Button } from '@/components/ui/button';
 import toast from 'react-hot-toast';
 
 const profileSchema = yup.object({

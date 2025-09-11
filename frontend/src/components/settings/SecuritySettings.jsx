@@ -12,8 +12,9 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { useChangePasswordMutation } from '@/store/api/authApi';
-import { Button } from '../ui/Button';
+import { Button } from '@/components/ui/button';
 import toast from 'react-hot-toast';
+import { normalizeApiError } from '@/utils/apiErrors';
 
 const passwordSchema = yup.object({
   old_password: yup.string().required('Current password is required'),
@@ -63,7 +64,8 @@ const SecuritySettings = ({ user }) => {
       setShowPasswordForm(false); // Hide form after successful change
     } catch (error) {
       console.error('Password change failed:', error);
-      toast.error(error?.data?.message || 'Failed to change password. Please try again.');
+      const normalizedError = normalizeApiError(error);
+      toast.error(normalizedError.message || 'Failed to change password. Please try again.');
     }
   };
 

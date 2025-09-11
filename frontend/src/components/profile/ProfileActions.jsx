@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Settings, Shield, Key, LogOut } from 'lucide-react';
-import { Button } from '../ui/Button';
+import { Button } from '@/components/ui/button';
 import { useLogoutMutation } from '@/store/api/authApi';
 import toast from 'react-hot-toast';
 

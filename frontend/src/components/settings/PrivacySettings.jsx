@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Eye, Download, Trash2, Shield, Globe, Lock } from 'lucide-react';
-import { Button } from '../ui/Button';
+import { Button } from '@/components/ui/button';
 import toast from 'react-hot-toast';
 
 const PrivacySettings = ({ user }) => {

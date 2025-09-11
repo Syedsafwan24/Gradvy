@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useSelector } from 'react-redux';
-import { Button } from '../ui/Button';
+import { Button } from '@/components/ui/button';
 import { Menu, X, Brain, ChevronDown, User, LogOut } from 'lucide-react';
 import { selectIsAuthenticated, selectCurrentUser } from '@/store/slices/authSlice';
 import { useLogoutMutation } from '@/store/api/authApi';

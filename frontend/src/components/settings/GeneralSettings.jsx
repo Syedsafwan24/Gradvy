@@ -6,7 +6,8 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { Save, User, Mail, Phone, Globe, Bell, Moon, Sun } from 'lucide-react';
 import { useUpdateProfileMutation } from '@/store/api/authApi';
-import { Button } from '../ui/Button';
+import { Button } from '@/components/ui/button';
+import { normalizeApiError } from '@/utils/apiErrors';
 import toast from 'react-hot-toast';
 
 const generalSettingsSchema = yup.object({
@@ -56,11 +57,8 @@ const GeneralSettings = ({ user }) => {
       toast.success('Profile updated successfully!');
     } catch (error) {
       console.error('Profile update failed:', error);
-      const errorMessage = error?.data?.message || 
-                          error?.data?.email?.[0] || 
-                          error?.data?.phone?.[0] || 
-                          'Failed to update profile. Please try again.';
-      toast.error(errorMessage);
+      const normalizedError = normalizeApiError(error);
+      toast.error(normalizedError.message || 'Failed to update profile. Please try again.');
     }
   };
 

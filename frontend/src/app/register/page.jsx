@@ -11,8 +11,8 @@ import { Eye, EyeOff, Mail, Lock, User, Loader2 } from 'lucide-react';
 import { useRegisterMutation } from '@/store/api/authApi';
 import { useSelector } from 'react-redux';
 import { selectIsAuthenticated } from '@/store/slices/authSlice';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import toast from 'react-hot-toast';
 import { normalizeApiError, applyFieldErrorsToForm } from '@/utils/apiErrors';
 

@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Trash2, AlertTriangle, LogOut, Download, RefreshCw, Clock, Mail } from 'lucide-react';
 import { useLogoutMutation } from '@/store/api/authApi';
-import { Button } from '../ui/Button';
+import { Button } from '@/components/ui/button';
 import toast from 'react-hot-toast';
 
 const AccountSettings = ({ user }) => {

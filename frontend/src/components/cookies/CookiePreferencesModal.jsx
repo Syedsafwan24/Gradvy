@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, Info, Shield, BarChart3, Zap, Target } from 'lucide-react';
-import { Button } from '../ui/Button';
+import { Button } from '@/components/ui/button';
 import { 
   getCookiePreferences, 
   setCookiePreferences, 

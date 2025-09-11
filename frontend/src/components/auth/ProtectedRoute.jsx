@@ -60,15 +60,7 @@ const ProtectedRoute = ({
           // Simple check: both isAuthenticated and accessToken must be present
           const hasValidAuth = isAuthenticated && accessToken;
           
-          console.log('🔒 ProtectedRoute: Auth check:', { 
-            isAuthenticated, 
-            hasAccessToken: !!accessToken, 
-            hasValidAuth,
-            pathname 
-          });
-          
           if (!hasValidAuth) {
-            console.log('🔒 ProtectedRoute: Missing authentication, redirecting to login');
             
             // Store the current path for redirect after login
             if (typeof window !== 'undefined') {
@@ -83,7 +75,6 @@ const ProtectedRoute = ({
           if (checkPermissions && user) {
             const hasPermission = await checkPermissions(user);
             if (!hasPermission) {
-              console.log('🔒 ProtectedRoute: Insufficient permissions');
               setError('You do not have permission to access this page.');
               return;
             }
@@ -91,7 +82,6 @@ const ProtectedRoute = ({
         } else {
           // For non-protected routes (like login page)
           if (isAuthenticated && accessToken) {
-            console.log('🔓 ProtectedRoute: User already authenticated, redirecting to dashboard');
             const savedPath = typeof window !== 'undefined' ? sessionStorage.getItem('redirectPath') : null;
             const redirectPath = savedPath || '/app/dashboard';
             if (typeof window !== 'undefined') {

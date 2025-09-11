@@ -8,9 +8,10 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Mail, ArrowLeft, Loader2 } from 'lucide-react';
 import { useRequestPasswordResetMutation } from '@/store/api/authApi';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import toast from 'react-hot-toast';
+import { normalizeApiError } from '@/utils/apiErrors';
 
 // Validation schema
 const resetSchema = yup.object({
@@ -42,17 +43,13 @@ const ForgotPasswordPage = () => {
       const result = await requestReset(data.email).unwrap();
       setIsSubmitted(true);
       
-      // Log token for development testing
-      if (result.token) {
-        console.log('Password Reset Token (for development):', result.token);
-        console.log('Token expires at:', result.expires_at);
-        console.log('Use this token at: /reset-password?token=' + result.token);
-      }
+      // Development token logging removed for production
       
       toast.success('Password reset instructions sent!');
     } catch (error) {
       console.error('Password reset error:', error);
-      toast.error(error?.data?.message || 'Failed to send reset instructions. Please try again.');
+      const normalizedError = normalizeApiError(error);
+      toast.error(normalizedError.message || 'Failed to send reset instructions. Please try again.');
     }
   };
 

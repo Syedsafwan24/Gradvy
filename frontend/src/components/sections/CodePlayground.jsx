@@ -9,7 +9,7 @@ import {
 	CheckCircle,
 	ArrowRight,
 } from 'lucide-react';
-import { Button } from '../ui/Button';
+import { Button } from '@/components/ui/button';
 
 const CodePlayground = () => {
 	const features = [

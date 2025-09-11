@@ -2,9 +2,10 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/useToast';
+import { API_CONFIG } from '@/config/api';
 
 export default function PrivacyQuickLinks() {
   const { toast } = useToast();
@@ -16,7 +17,7 @@ export default function PrivacyQuickLinks() {
 
   const downloadConsentHistory = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/preferences/consent-history/download/', {
+      const res = await fetch(`${API_CONFIG.BASE_URL}/${API_CONFIG.ENDPOINTS.CONSENT_HISTORY_DOWNLOAD}`, {
         method: 'GET',
         credentials: 'include',
       });
@@ -39,7 +40,7 @@ export default function PrivacyQuickLinks() {
   const revokeAllConsents = async () => {
     if (!confirm('Revoke all non-essential consents? This limits personalization and analytics.')) return;
     try {
-      const res = await fetch('http://localhost:8000/api/preferences/consent/revoke-all/', {
+      const res = await fetch(`${API_CONFIG.BASE_URL}/${API_CONFIG.ENDPOINTS.CONSENT_REVOKE_ALL}`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

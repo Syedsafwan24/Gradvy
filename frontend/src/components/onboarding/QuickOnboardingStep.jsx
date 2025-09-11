@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ArrowRight, Clock, Zap, BookOpen, TrendingUp, User } from 'lucide-react';
 import { useSaveOnboardingProgressMutation } from '@/services/preferencesApi';
@@ -145,7 +145,6 @@ export default function QuickOnboardingStep({
         timestamp: new Date().toISOString(),
         type: 'quick_onboarding'
       });
-      console.log('Progress saved for step', currentStep + 1);
     } catch (error) {
       console.warn('Failed to save progress:', error);
     }

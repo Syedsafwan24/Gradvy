@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { Shield, BarChart3, Zap, Target, Settings, ExternalLink } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
+import { Button } from '@/components/ui/button';
 import { COOKIE_POLICY_DATA, COOKIE_TYPES, getCookiePreferences, CookieBanner } from '@/lib/cookieUtils';
 
 const CookiePolicyPage = () => {

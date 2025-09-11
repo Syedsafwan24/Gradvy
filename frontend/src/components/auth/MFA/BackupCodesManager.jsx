@@ -22,9 +22,10 @@ import {
   useGetMFABackupCodesQuery,
   useRegenerateMFABackupCodesMutation 
 } from '@/store/api/authApi';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import toast from 'react-hot-toast';
+import { normalizeApiError } from '@/utils/apiErrors';
 
 const BackupCodesManager = ({ 
   isOpen, 
@@ -116,7 +117,8 @@ const BackupCodesManager = ({
       toast.success('New backup codes generated!');
     } catch (error) {
       console.error('Failed to regenerate backup codes:', error);
-      toast.error(error?.data?.error || 'Failed to regenerate backup codes');
+      const normalizedError = normalizeApiError(error);
+      toast.error(normalizedError.message || 'Failed to regenerate backup codes');
     }
   };
 

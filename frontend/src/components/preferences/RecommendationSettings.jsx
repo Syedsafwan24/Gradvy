@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { authenticatedApiCall } from '@/utils/authHelpers';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -50,16 +51,8 @@ export default function RecommendationSettings({ preferences, loading, onPrefere
   const loadRecommendations = async () => {
     setLoadingRecommendations(true);
     try {
-      const response = await fetch('/api/preferences/recommendations/', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setRecommendations(data.recommendations || []);
-      }
+      const { data } = await authenticatedApiCall('/api/preferences/recommendations/');
+      setRecommendations(data.recommendations || []);
     } catch (error) {
       console.error('Failed to load recommendations:', error);
     } finally {
@@ -70,12 +63,8 @@ export default function RecommendationSettings({ preferences, loading, onPrefere
   const generateNewRecommendations = async () => {
     setGeneratingRecommendations(true);
     try {
-      const response = await fetch('/api/preferences/recommendations/generate/', {
+      const { data } = await authenticatedApiCall('/api/preferences/recommendations/generate/', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
         body: JSON.stringify({
           personalization_enabled: enablePersonalization,
           diversity_level: diversityLevel[0] / 100,
@@ -86,11 +75,7 @@ export default function RecommendationSettings({ preferences, loading, onPrefere
           adaptive_learning: adaptiveLearning
         }),
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        setRecommendations(data.recommendations || []);
-      }
+      setRecommendations(data.recommendations || []);
     } catch (error) {
       console.error('Failed to generate recommendations:', error);
     } finally {
@@ -100,12 +85,8 @@ export default function RecommendationSettings({ preferences, loading, onPrefere
 
   const provideFeedback = async (recommendationId, feedback) => {
     try {
-      await fetch('/api/preferences/recommendations/feedback/', {
+      await authenticatedApiCall('/api/preferences/recommendations/feedback/', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
         body: JSON.stringify({
           recommendation_id: recommendationId,
           feedback,

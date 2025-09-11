@@ -54,7 +54,6 @@ export default function QuickOnboardingPage() {
   // Handle quick onboarding completion
   const handleComplete = async () => {
     try {
-      console.log('Starting quick onboarding submission with data:', {
         quick_onboarding_data: {
           primary_learning_goal: formData.primary_learning_goal,
           experience_level: formData.experience_level,
@@ -89,7 +88,6 @@ export default function QuickOnboardingPage() {
         }
       }).unwrap();
 
-      console.log('Quick onboarding completed successfully:', result);
       
       // Invalidate the preferences cache immediately to ensure fresh data
       dispatch(preferencesApi.util.invalidateTags(['UserPreferences']));

@@ -6,10 +6,11 @@ import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { Shield, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
+import { Button } from '@/components/ui/button';
 import { selectMFAEnrollmentData } from '@/store/slices/authSlice';
 import { useConfirmMFAEnrollmentMutation } from '@/store/api/authApi';
 import toast from 'react-hot-toast';
+import { normalizeApiError } from '@/utils/apiErrors';
 
 // Validation schema
 const verificationSchema = yup.object({
@@ -71,8 +72,8 @@ const TOTPVerificationStep = ({ onNext, onPrevious, onStepComplete }) => {
       return true;
     } catch (error) {
       console.error('TOTP verification failed:', error);
-      const errorMessage = error?.data?.error || 'Invalid code. Please try again.';
-      toast.error(errorMessage);
+      const normalizedError = normalizeApiError(error);
+      toast.error(normalizedError.message || 'Invalid code. Please try again.');
       return false;
     } finally {
       setIsVerifying(false);

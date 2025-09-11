@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { Key, Download, Copy, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { selectMFABackupCodes } from '@/store/slices/authSlice';
-import { Button } from '@/components/ui/Button';
+import { Button } from '@/components/ui/button';
 import toast from 'react-hot-toast';
 
 const BackupCodesStep = ({ onNext, onPrevious }) => {

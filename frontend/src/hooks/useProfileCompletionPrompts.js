@@ -43,7 +43,6 @@ export const useProfileCompletionPrompts = (user) => {
       }
       
       // For other errors (auth, network, etc), don't show prompts
-      console.log('Other API error, not showing prompts:', error?.status);
       return null;
     }
     
@@ -65,23 +64,14 @@ export const useProfileCompletionPrompts = (user) => {
     const completionPercentage = prefs.profile_completion_percentage || 0;
     const onboardingStatus = prefs.onboarding_status || 'not_started';
     const now = Date.now();
-    
-    console.log('checkAndShowPrompts called with:', {
-      completionPercentage,
-      onboarding_status: onboardingStatus,
-      promptShown: promptShownRef.current,
-      timeSinceLastPrompt: now - lastPromptTimeRef.current
-    });
 
     // Don't show prompts if onboarding is fully completed
     if (onboardingStatus === 'full_completed') {
-      console.log('Full onboarding completed, not showing prompts');
       return;
     }
 
     // Don't show prompts if profile is sufficiently complete
     if (completionPercentage >= 80) {
-      console.log('Profile completion >= 80%, not showing prompts');
       return;
     }
 
@@ -105,13 +95,10 @@ export const useProfileCompletionPrompts = (user) => {
         lastPromptTimeRef.current = now;
         
         if (onboardingStatus === 'not_started') {
-          console.log('Showing quick onboarding prompt');
           showQuickOnboardingPrompt();
         } else if (onboardingStatus === 'quick_completed' && completionPercentage < 50) {
-          console.log('Showing full onboarding prompt');
           showFullOnboardingPrompt();
         } else if (completionPercentage < 80) {
-          console.log('Showing profile completion prompt');
           showProfileCompletionPrompt(completionPercentage);
         }
       }

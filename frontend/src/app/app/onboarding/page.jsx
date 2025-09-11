@@ -312,7 +312,6 @@ export default function OnboardingPage() {
   const handleComplete = async () => {
     setIsLoading(true);
     try {
-      console.log('Starting full onboarding submission with data:', formData);
 
       // Add submission timestamp
       const submissionData = {
@@ -335,7 +334,6 @@ export default function OnboardingPage() {
         language_preference: submissionData.language_preference || ['english']
       }).unwrap();
 
-      console.log('Full onboarding completed successfully:', result);
       
       // Invalidate the preferences cache immediately to ensure fresh data
       dispatch(preferencesApi.util.invalidateTags(['UserPreferences']));

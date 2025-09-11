@@ -21,7 +21,7 @@ import {
   Terminal,
   FileCode
 } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
+import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
 const PlaygroundHero = ({ onStartCoding }) => {

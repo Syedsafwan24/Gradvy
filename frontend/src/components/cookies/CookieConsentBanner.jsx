@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import { Button } from '../ui/Button';
+import { Button } from '@/components/ui/button';
 import { CookieBanner, isCookieConsentSet } from '@/lib/cookieUtils';
 
 const CookieConsentBanner = () => {

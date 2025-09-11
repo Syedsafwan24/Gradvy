@@ -2,10 +2,11 @@ import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { setCredentials, logout } from '../slices/authSlice';
 import { getCSRFToken } from '../../lib/cookieUtils';
 import { normalizeApiError } from '../../utils/apiErrors';
+import { API_CONFIG } from '../../config/api';
 
 // Base query with automatic token handling and CSRF protection
 const baseQuery = fetchBaseQuery({
-  baseUrl: 'http://localhost:8000/api/',
+  baseUrl: API_CONFIG.API_BASE_URL,
   credentials: 'include', // Include cookies for refresh token and session
   prepareHeaders: (headers, { getState }) => {
     // Get access token from Redux state

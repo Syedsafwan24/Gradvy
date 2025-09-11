@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { User, Shield, Mail, Calendar } from 'lucide-react';
-import { Button } from '../ui/Button';
+import { Button } from '@/components/ui/button';
 
 const ProfileHeader = ({ user }) => {
   const getInitials = (firstName, lastName) => {

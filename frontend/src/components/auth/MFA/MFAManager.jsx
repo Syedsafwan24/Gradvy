@@ -13,8 +13,8 @@ import {
   useGetMFAStatusQuery,
   useGetMFABackupCodesQuery 
 } from '@/store/api/authApi';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import MFAEnrollmentWizard from './MFAEnrollmentWizard';
 import BackupCodesManager from './BackupCodesManager';
 import toast from 'react-hot-toast';

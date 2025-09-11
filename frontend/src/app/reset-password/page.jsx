@@ -9,9 +9,10 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, Lock, ArrowLeft, Loader2, CheckCircle } from 'lucide-react';
 import { useConfirmPasswordResetMutation } from '@/store/api/authApi';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import toast from 'react-hot-toast';
+import { normalizeApiError } from '@/utils/apiErrors';
 
 // Validation schema
 const resetSchema = yup.object({
@@ -82,14 +83,16 @@ const ResetPasswordPage = () => {
     } catch (error) {
       console.error('Password reset error:', error);
       
+      const normalizedError = normalizeApiError(error);
+      
       // Handle specific error cases
-      if (error?.data?.token) {
+      if (normalizedError.fieldErrors.token) {
         toast.error('Reset link has expired or is invalid. Please request a new password reset.');
         setIsTokenValid(false);
-      } else if (error?.data?.new_password) {
+      } else if (normalizedError.fieldErrors.new_password) {
         toast.error('Password requirements not met. Please check the requirements.');
       } else {
-        toast.error(error?.data?.message || 'Failed to reset password. Please try again.');
+        toast.error(normalizedError.message || 'Failed to reset password. Please try again.');
       }
     }
   };
