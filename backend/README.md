@@ -9,7 +9,7 @@
 [![Redis 7](https://img.shields.io/badge/Redis-7-red.svg?style=flat-square)](https://redis.io/)
 [![Cross Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-brightgreen.svg?style=flat-square)](#cross-platform-setup)
 
-*Professional authentication system with MFA support - works on all platforms*
+_Professional authentication system with MFA support - works on all platforms_
 
 </div>
 
@@ -17,14 +17,15 @@
 
 Get Gradvy running in under 2 minutes with our hybrid setup:
 
-| Platform | Quick Setup |
-|----------|-------------|
-| 🪟 **Windows** | [Windows Setup](#-windows-setup) |
-| 🍎 **macOS** | [macOS Setup](#-macos-setup) |
-| 🐧 **Linux** | [Linux Setup](#-linux-setup) |
-| 🐳 **Docker** | [Docker Setup](#-docker-setup-universal) |
+| Platform       | Quick Setup                              |
+| -------------- | ---------------------------------------- |
+| 🪟 **Windows** | [Windows Setup](#-windows-setup)         |
+| 🍎 **macOS**   | [macOS Setup](#-macos-setup)             |
+| 🐧 **Linux**   | [Linux Setup](#-linux-setup)             |
+| 🐳 **Docker**  | [Docker Setup](#-docker-setup-universal) |
 
 **Universal Quick Start:**
+
 ```bash
 # 1. Clone and navigate
 git clone https://github.com/Syedsafwan24/Gradvy.git
@@ -39,7 +40,7 @@ cd Gradvy/backend
 # 4. Run migrations
 ./scripts/local-migrate.sh
 
-# 5. Create admin user  
+# 5. Create admin user
 ./scripts/local-superuser.sh
 
 # 6. Start Django locally
@@ -47,6 +48,7 @@ cd Gradvy/backend
 ```
 
 🎉 **Access your application:**
+
 - **Django Admin**: http://localhost:8000/admin/
 - **Main API**: http://localhost:8000/api/
 - **Flower Monitoring**: http://localhost:5555/ (when running Celery)
@@ -57,21 +59,21 @@ Gradvy uses a **hybrid development architecture** for optimal developer experien
 
 ### 🛠️ Hybrid Tech Stack
 
-| Component | Technology | Version | Location | Purpose |
-|-----------|------------|---------|----------|---------|
-| **Django** | Django | 5.1.3 | 🏠 Local | Web framework & API |
-| **Database** | PostgreSQL | 15 | 🐳 Docker | Data persistence |  
-| **Cache** | Redis | 7 | 🐳 Docker | Caching & message broker |
-| **Queue** | Celery | 5.3.6 | 🏠 Local | Background processing |
-| **Monitoring** | Flower | 2.0.1 | 🏠 Local | Task monitoring UI |
-| **Auth** | JWT + TOTP | Latest | 🏠 Local | Authentication & MFA |
+| Component      | Technology | Version | Location  | Purpose                  |
+| -------------- | ---------- | ------- | --------- | ------------------------ |
+| **Django**     | Django     | 5.1.3   | 🏠 Local  | Web framework & API      |
+| **Database**   | PostgreSQL | 15      | 🐳 Docker | Data persistence         |
+| **Cache**      | Redis      | 7       | 🐳 Docker | Caching & message broker |
+| **Queue**      | Celery     | 5.3.6   | 🏠 Local  | Background processing    |
+| **Monitoring** | Flower     | 2.0.1   | 🏠 Local  | Task monitoring UI       |
+| **Auth**       | JWT + TOTP | Latest  | 🏠 Local  | Authentication & MFA     |
 
 ### 🔧 Hybrid Development Benefits
 
 - ⚡ **Fast Development** - No container rebuilds on code changes
 - 🐛 **Easy Debugging** - Direct IDE integration and breakpoints
 - 💾 **Data Persistence** - PostgreSQL and Redis data preserved in Docker
-- 🔄 **Hot Reload** - Instant Django auto-reload on file changes  
+- 🔄 **Hot Reload** - Instant Django auto-reload on file changes
 - 🧪 **Simple Testing** - Direct access to Django test commands
 - 🛠️ **Local Tools** - Full access to Python debugging tools
 - 📊 **Consistent Data** - Shared Docker data services for team consistency
@@ -90,7 +92,7 @@ Gradvy uses a **hybrid development architecture** for optimal developer experien
 # 1. Setup complete local environment
 ./scripts/local-setup.sh
 
-# 2. Start data services (PostgreSQL + Redis in Docker)  
+# 2. Start data services (PostgreSQL + Redis in Docker)
 ./scripts/data-start.sh
 
 # 3. Run database migrations locally
@@ -109,7 +111,7 @@ Gradvy uses a **hybrid development architecture** for optimal developer experien
 # Start Celery worker locally (optional)
 ./scripts/local-celery.sh
 
-# Start Flower monitoring locally (optional)  
+# Start Flower monitoring locally (optional)
 ./scripts/local-flower.sh
 
 # Stop data services when done
@@ -125,13 +127,13 @@ docker-compose down
 
 Key configuration options:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DJANGO_SECRET_KEY` | Django secret key | `dev-secret-key...` |
-| `DJANGO_DEBUG` | Debug mode | `True` |
-| `DATABASE_URL` | PostgreSQL connection | `postgresql://...` |
-| `CELERY_BROKER_URL` | Redis connection | `redis://localhost:6379/0` |
-| `FLOWER_PASSWORD` | Flower UI password | `flower_admin_2024` |
+| Variable            | Description           | Default                    |
+| ------------------- | --------------------- | -------------------------- |
+| `DJANGO_SECRET_KEY` | Django secret key     | `dev-secret-key...`        |
+| `DJANGO_DEBUG`      | Debug mode            | `True`                     |
+| `DATABASE_URL`      | PostgreSQL connection | `postgresql://...`         |
+| `CELERY_BROKER_URL` | Redis connection      | `redis://localhost:6379/0` |
+| `FLOWER_PASSWORD`   | Flower UI password    | `flower_admin_2024`        |
 
 ### Service Configuration
 
@@ -156,14 +158,14 @@ Professional scripts optimized for hybrid development:
 ./scripts/local-migrate.sh   # Run migrations locally
 ./scripts/local-superuser.sh # Create admin user locally
 
-# Development Servers  
+# Development Servers
 ./scripts/local-dev.sh       # Start Django development server
 ./scripts/local-celery.sh    # Start Celery worker locally
 ./scripts/local-flower.sh    # Start Flower monitoring locally
 
 # Data Services
 docker-compose up -d         # Start data services
-docker-compose down          # Stop data services  
+docker-compose down          # Stop data services
 docker-compose ps            # Check service status
 ```
 
@@ -197,15 +199,13 @@ Authorization: Bearer <access_token>
 ```
 
 Response:
+
 ```json
 {
-    "secret": "JBSWY3DPEHPK3PXP",
-    "qr_code": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
-    "backup_codes": [
-        "ABC123DEF",
-        "GHI456JKL"
-    ],
-    "device_id": 1
+	"secret": "JBSWY3DPEHPK3PXP",
+	"qr_code": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+	"backup_codes": ["ABC123DEF", "GHI456JKL"],
+	"device_id": 1
 }
 ```
 
@@ -293,11 +293,13 @@ docker-compose exec gradvy-django python manage.py migrate
 ### 📋 Prerequisites (All Platforms)
 
 #### Required Software
-- **Python 3.13+** 
-- **Git** 
+
+- **Python 3.13+**
+- **Git**
 - **Docker & Docker Compose** (recommended)
 
 #### Optional but Recommended
+
 - **VS Code** or **PyCharm** for development
 - **Postman** or **Thunder Client** for API testing
 
@@ -306,6 +308,7 @@ docker-compose exec gradvy-django python manage.py migrate
 ### 🪟 Windows Setup
 
 #### Windows Quick Start
+
 ```powershell
 # 1. Clone repository
 git clone https://github.com/Syedsafwan24/Gradvy.git
@@ -337,6 +340,7 @@ python core\manage.py runserver
 #### Windows Prerequisites Installation
 
 **Option 1: Using Chocolatey (Recommended)**
+
 ```powershell
 # Install Chocolatey first: https://chocolatey.org/install
 choco install python git docker-desktop -y
@@ -344,6 +348,7 @@ refreshenv
 ```
 
 **Option 2: Manual Installation**
+
 1. **Python 3.13**: Download from [python.org](https://www.python.org/downloads/windows/)
    - ✅ Check "Add Python to PATH"
    - ✅ Check "Install pip"
@@ -353,11 +358,13 @@ refreshenv
 #### Windows Troubleshooting
 
 **PowerShell Execution Policy Error:**
+
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
 **Port Already in Use:**
+
 ```powershell
 # Find process using port 8000
 netstat -ano | findstr :8000
@@ -370,6 +377,7 @@ taskkill /F /PID <PID>
 ### 🍎 macOS Setup
 
 #### macOS Quick Start
+
 ```bash
 # 1. Clone repository
 git clone https://github.com/Syedsafwan24/Gradvy.git
@@ -377,7 +385,7 @@ cd Gradvy/backend
 
 # 2. Create virtual environment
 python3 -m venv venv
-source venv/bin/activate
+source venv/scripts/activate
 
 # 3. Install dependencies
 pip install -r requirements.txt
@@ -401,6 +409,7 @@ python core/manage.py runserver
 #### macOS Prerequisites Installation
 
 **Option 1: Using Homebrew (Recommended)**
+
 ```bash
 # Install Homebrew first: https://brew.sh
 brew install python@3.13 git
@@ -409,6 +418,7 @@ open /Applications/Docker.app
 ```
 
 **Option 2: Using MacPorts**
+
 ```bash
 # Install MacPorts first: https://www.macports.org
 sudo port install python313 git
@@ -418,6 +428,7 @@ sudo port install python313 git
 #### macOS Troubleshooting
 
 **Python Version Issues:**
+
 ```bash
 # If python3 points to older version
 brew unlink python@3.12  # or older version
@@ -430,6 +441,7 @@ pyenv global 3.13.0
 ```
 
 **Port Issues:**
+
 ```bash
 # Find process using port
 lsof -ti:8000
@@ -442,6 +454,7 @@ kill -9 $(lsof -ti:8000)
 ### 🐧 Linux Setup
 
 #### Linux Quick Start
+
 ```bash
 # 1. Clone repository
 git clone https://github.com/Syedsafwan24/Gradvy.git
@@ -449,7 +462,7 @@ cd Gradvy/backend
 
 # 2. Create virtual environment
 python3 -m venv venv
-source venv/bin/activate
+source venv/scripts/activate
 
 # 3. Install dependencies
 pip install -r requirements.txt
@@ -473,6 +486,7 @@ python core/manage.py runserver
 #### Linux Prerequisites Installation
 
 **Ubuntu/Debian**
+
 ```bash
 # Update package index
 sudo apt update
@@ -493,6 +507,7 @@ sudo apt install docker-compose -y
 ```
 
 **CentOS/RHEL/Fedora**
+
 ```bash
 # Install Python 3.13 (Fedora)
 sudo dnf install python3.13 python3-pip git -y
@@ -505,6 +520,7 @@ sudo usermod -aG docker $USER
 ```
 
 **Arch Linux**
+
 ```bash
 # Install prerequisites
 sudo pacman -S python python-pip git docker docker-compose
@@ -518,6 +534,7 @@ sudo usermod -aG docker $USER
 #### Linux Troubleshooting
 
 **Permission Denied (Docker):**
+
 ```bash
 # Add user to docker group
 sudo usermod -aG docker $USER
@@ -526,6 +543,7 @@ newgrp docker
 ```
 
 **Port in Use:**
+
 ```bash
 # Find process
 sudo lsof -i :8000
@@ -534,6 +552,7 @@ sudo kill -9 <PID>
 ```
 
 **Python Version Not Available:**
+
 ```bash
 # Install pyenv for version management
 curl https://pyenv.run | bash
@@ -550,6 +569,7 @@ pyenv local 3.13.0
 ### 🐳 Docker Setup (Universal)
 
 #### Docker Quick Start
+
 ```bash
 # 1. Clone repository
 git clone https://github.com/Syedsafwan24/Gradvy.git
@@ -576,12 +596,14 @@ docker-compose exec gradvy-django python manage.py createsuperuser
 #### VS Code Setup
 
 1. Install extensions:
+
    - Python
    - Django
    - Docker
    - REST Client
 
 2. Open workspace:
+
    ```bash
    code Gradvy/backend
    ```
@@ -589,11 +611,12 @@ docker-compose exec gradvy-django python manage.py createsuperuser
 3. Configure Python interpreter:
    - Ctrl/Cmd + Shift + P
    - "Python: Select Interpreter"
-   - Choose venv/bin/python or venv/Scripts/python.exe
+   - Choose venv/scripts/python or venv/Scripts/python.exe
 
 #### Environment Variables
 
 Create `.env` file with:
+
 ```env
 # Django
 DJANGO_DEBUG=True
@@ -616,16 +639,17 @@ FLOWER_PASSWORD=flower_admin_2024
 
 ### Cross-Platform Issues
 
-| Issue | Windows | macOS | Linux |
-|-------|---------|-------|--------|
-| Permission Denied | Run as Administrator | Use `sudo` | Use `sudo` |
-| Port in Use | `netstat -ano \| findstr :8000` | `lsof -ti:8000` | `sudo netstat -tulnp \| grep :8000` |
-| Docker not found | Restart Docker Desktop | Open Docker.app | `sudo systemctl start docker` |
-| Python not found | Add to PATH | Use `python3` | Install python3-dev |
+| Issue             | Windows                         | macOS           | Linux                               |
+| ----------------- | ------------------------------- | --------------- | ----------------------------------- |
+| Permission Denied | Run as Administrator            | Use `sudo`      | Use `sudo`                          |
+| Port in Use       | `netstat -ano \| findstr :8000` | `lsof -ti:8000` | `sudo netstat -tulnp \| grep :8000` |
+| Docker not found  | Restart Docker Desktop          | Open Docker.app | `sudo systemctl start docker`       |
+| Python not found  | Add to PATH                     | Use `python3`   | Install python3-dev                 |
 
 ### Common Issues
 
 **Database Connection Error:**
+
 ```bash
 # Check PostgreSQL service
 ./scripts/dev-logs.sh gradvy-postgres
@@ -635,6 +659,7 @@ docker-compose restart gradvy-postgres
 ```
 
 **Celery Tasks Not Processing:**
+
 ```bash
 # Check worker status
 ./scripts/dev-logs.sh gradvy-celery-worker
@@ -644,6 +669,7 @@ docker-compose restart gradvy-celery-worker
 ```
 
 **Port Conflicts:**
+
 ```bash
 # Check port usage
 netstat -tulpn | grep :5432
@@ -658,7 +684,7 @@ netstat -tulpn | grep :5432
 ```bash
 # Activate virtual environment (if using local setup)
 # Windows: .\venv\Scripts\Activate.ps1
-# macOS/Linux: source venv/bin/activate
+# macOS/Linux: source venv/scripts/activate
 
 # Run basic tests
 python core/manage.py check

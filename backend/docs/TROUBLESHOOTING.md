@@ -87,7 +87,7 @@ rmdir /s venv  # Windows
 python -m venv venv
 
 # Activate (make sure this works)
-source venv/bin/activate  # Linux/macOS
+source venv/scripts/activate  # Linux/macOS
 venv\Scripts\activate     # Windows
 
 # Verify activation (should show venv path)
@@ -413,7 +413,7 @@ which python  # Should point to venv
 pip list      # Should show installed packages
 
 # If not activated
-source venv/bin/activate  # Linux/macOS
+source venv/scripts/activate  # Linux/macOS
 venv\Scripts\activate     # Windows
 ```
 

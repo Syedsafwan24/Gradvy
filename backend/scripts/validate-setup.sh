@@ -81,8 +81,8 @@ if [ -d "venv" ]; then
     track_test "pass" "Virtual environment exists"
     
     # Check if virtual environment has required packages
-    if [ -f "venv/bin/activate" ]; then
-        source venv/bin/activate
+    if [ -f "venv/scripts/activate" ]; then
+        source venv/scripts/activate
         
         # Test Django
         if python -c "import django; print(f'Django {django.get_version()}')" >/dev/null 2>&1; then
@@ -213,8 +213,8 @@ echo ""
 # 4. Django Application Validation
 print_header "Django Application"
 
-if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
-    source venv/bin/activate
+if [ -d "venv" ] && [ -f "venv/scripts/activate" ]; then
+    source venv/scripts/activate
     cd core
     
     # Django check

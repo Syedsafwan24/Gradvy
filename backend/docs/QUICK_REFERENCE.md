@@ -6,7 +6,7 @@
 
 ```bash
 # 1. Activate virtual environment
-source venv/bin/activate        # Linux/macOS
+source venv/scripts/activate        # Linux/macOS
 venv\Scripts\activate          # Windows
 
 # 2. Start Docker services
@@ -148,7 +148,7 @@ python manage.py runserver --verbosity=2
 
 | Error                        | Solution                                              |
 | ---------------------------- | ----------------------------------------------------- |
-| `ModuleNotFoundError`        | Activate venv: `source venv/bin/activate`             |
+| `ModuleNotFoundError`        | Activate venv: `source venv/scripts/activate`         |
 | `Database connection failed` | Check PostgreSQL is running & credentials in `.env`   |
 | `Redis connection failed`    | Run `docker-compose up -d`                            |
 | `Port 8000 in use`           | Use different port: `python manage.py runserver 8001` |
@@ -199,7 +199,7 @@ coverage report
 python -m venv venv
 
 # Activate
-source venv/bin/activate    # Linux/macOS
+source venv/scripts/activate    # Linux/macOS
 venv\Scripts\activate      # Windows
 
 # Deactivate

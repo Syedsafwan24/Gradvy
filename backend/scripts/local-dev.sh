@@ -88,7 +88,7 @@ fi
 
 # Activate virtual environment
 print_status "Activating virtual environment..."
-source venv/bin/activate
+source venv/scripts/activate
 
 # Check if requirements are installed
 if ! pip show django &> /dev/null; then

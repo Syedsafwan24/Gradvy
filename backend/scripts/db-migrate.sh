@@ -62,7 +62,7 @@ if [[ "$VIRTUAL_ENV" != "" ]]; then
     print_success "Virtual environment is active: $(basename $VIRTUAL_ENV)"
 else
     print_warning "No virtual environment detected. Make sure you have activated the venv."
-    echo "   source venv/bin/activate"
+    echo "   source venv/scripts/activate"
 fi
 
 # Create migrations for auth app
