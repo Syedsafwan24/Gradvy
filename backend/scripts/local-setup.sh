@@ -68,7 +68,7 @@ fi
 
 # Activate virtual environment
 print_status "Activating virtual environment..."
-source venv/bin/activate
+source venv/scripts/activate
 
 # Upgrade pip
 print_status "Upgrading pip..."
@@ -161,7 +161,7 @@ if python -c "import mongoengine, pymongo; print('MongoDB dependencies: OK')" 2>
 else
     print_warning "MongoDB dependencies test failed. Installing additional packages..."
     cd ..
-    source venv/bin/activate
+    source venv/scripts/activate
     pip install pymongo==4.6.0 mongoengine==0.27.0 dnspython==2.4.2
     cd core
     if python -c "import mongoengine, pymongo; print('MongoDB dependencies: OK')" 2>/dev/null; then

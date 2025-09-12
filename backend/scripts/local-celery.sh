@@ -42,7 +42,7 @@ fi
 
 # Activate virtual environment
 print_status "Activating virtual environment..."
-source venv/bin/activate
+source venv/scripts/activate
 
 # Navigate to Django project
 cd core
