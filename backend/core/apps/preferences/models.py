@@ -914,22 +914,42 @@ class UserPreference(Document):
     @property
     def onboarding_completed(self):
         """Compatibility property for legacy code"""
-        return self.onboarding_status in ['quick_completed', 'full_completed']
+        try:
+            if not hasattr(self, 'onboarding_status') or self.onboarding_status is None:
+                return False
+            return self.onboarding_status in ['quick_completed', 'full_completed']
+        except (AttributeError, Exception):
+            return False
     
     @property
     def quick_onboarding_completed(self):
         """Compatibility property for legacy code"""
-        return self.onboarding_status in ['quick_completed', 'full_completed']
+        try:
+            if not hasattr(self, 'onboarding_status') or self.onboarding_status is None:
+                return False
+            return self.onboarding_status in ['quick_completed', 'full_completed']
+        except (AttributeError, Exception):
+            return False
     
     @property
     def is_onboarding_complete(self):
         """Check if any onboarding has been completed"""
-        return self.onboarding_status != 'not_started'
+        try:
+            if not hasattr(self, 'onboarding_status') or self.onboarding_status is None:
+                return False
+            return self.onboarding_status != 'not_started'
+        except (AttributeError, Exception):
+            return False
     
     @property
     def is_full_onboarding_complete(self):
         """Check if full onboarding has been completed"""
-        return self.onboarding_status == 'full_completed'
+        try:
+            if not hasattr(self, 'onboarding_status') or self.onboarding_status is None:
+                return False
+            return self.onboarding_status == 'full_completed'
+        except (AttributeError, Exception):
+            return False
 
     def __str__(self):
         privacy_status = "with privacy controls" if self.privacy_settings else "no privacy config"

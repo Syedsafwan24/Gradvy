@@ -54,22 +54,6 @@ export default function QuickOnboardingPage() {
   // Handle quick onboarding completion
   const handleComplete = async () => {
     try {
-        quick_onboarding_data: {
-          primary_learning_goal: formData.primary_learning_goal,
-          experience_level: formData.experience_level,
-          time_availability: formData.time_availability,
-          primary_learning_style: formData.primary_learning_style,
-          completion_time: new Date().toISOString()
-        },
-        basic_info: {
-          learning_goals: formData.primary_learning_goal ? [formData.primary_learning_goal] : [],
-          experience_level: formData.experience_level,
-          time_availability: formData.time_availability,
-          learning_style: formData.primary_learning_style ? [formData.primary_learning_style] : [],
-          preferred_pace: getDefaultPace(formData.experience_level)
-        }
-      });
-
       // Submit quick onboarding data using RTK Query
       const result = await submitQuickOnboarding({
         quick_onboarding_data: {
@@ -104,9 +88,21 @@ export default function QuickOnboardingPage() {
       
     } catch (error) {
       const e = normalizeApiError(error);
-      toast.error(e.message || 'Failed to complete quick onboarding');
+      console.error('Quick onboarding error:', error);
       
-      // On error, still redirect to dashboard but show appropriate error
+      // Provide more specific error messaging
+      let errorMessage = 'Failed to complete quick onboarding';
+      if (e?.status >= 500) {
+        errorMessage = 'Server temporarily unavailable. Your progress has been saved locally.';
+      } else if (e?.status === 401) {
+        errorMessage = 'Session expired. Please log in again.';
+        router.push('/login?redirect=/app/quick-onboarding');
+        return;
+      }
+      
+      toast.error(errorMessage);
+      
+      // Still redirect to dashboard but show appropriate error
       setTimeout(() => {
         router.push('/app/dashboard');
       }, 1500);

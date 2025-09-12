@@ -32,10 +32,10 @@ export const API_CONFIG = {
   // API endpoints
   ENDPOINTS: {
     // Auth endpoints
-    LOGIN: 'auth/login/',
-    LOGOUT: 'auth/logout/',
-    REGISTER: 'auth/register/',
-    REFRESH: 'auth/refresh/',
+    LOGIN: 'login/',
+    LOGOUT: 'logout/',
+    REGISTER: 'register/',
+    REFRESH: 'refresh/',
     
     // Preferences endpoints
     CONSENT_HISTORY_DOWNLOAD: 'preferences/consent-history/download/',

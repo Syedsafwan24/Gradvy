@@ -16,7 +16,8 @@ import {
   BookOpen,
   Sparkles,
   X,
-  Star
+  Star,
+  AlertCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useGetUserPreferencesQuery, useLogInteractionMutation } from '@/services/preferencesApi';
@@ -48,7 +49,7 @@ export default function ProfileCompletionCard({
 
   const handleDismiss = async () => {
     try {
-      // Use RTK Query to log dismissal interaction
+      // Use RTK Query to log dismissal interaction - continue even if this fails
       await logInteraction({
         type: 'page_view',
         data: {
@@ -63,7 +64,8 @@ export default function ProfileCompletionCard({
         }
       }).unwrap();
     } catch (error) {
-      console.error('Error dismissing prompt:', error);
+      // Silently fail interaction logging - don't block user experience
+      console.warn('Failed to log interaction (non-critical):', error);
     }
     
     setDismissed(true);
@@ -92,6 +94,28 @@ export default function ProfileCompletionCard({
   // Don't show if loading
   if (loading) {
     return null;
+  }
+
+  // Show error state if preferences API is completely down (5xx errors)
+  if (isError && error?.status >= 500) {
+    return (
+      <Card className="border-yellow-200 bg-yellow-50">
+        <div className="p-4 text-center">
+          <AlertCircle className="h-6 w-6 text-yellow-600 mx-auto mb-2" />
+          <p className="text-sm text-yellow-800">
+            Having trouble loading your profile data. You can still use the app normally.
+          </p>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => window.location.reload()} 
+            className="mt-2 text-yellow-700 border-yellow-300 hover:bg-yellow-100"
+          >
+            Try Again
+          </Button>
+        </div>
+      </Card>
+    );
   }
 
   // Don't show if profile is sufficiently complete (>= 80%) and not forced

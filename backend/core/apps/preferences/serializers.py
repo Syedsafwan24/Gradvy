@@ -184,43 +184,68 @@ class UserPreferenceSerializer(serializers.Serializer):
         if instance is None:
             return None
         
+        # Safe getter function with fallback values
+        def safe_get(obj, attr, default=None):
+            try:
+                return getattr(obj, attr, default)
+            except (AttributeError, Exception):
+                return default
+        
         data = {
-            'user_id': instance.user_id,
-            'created_at': instance.created_at,
-            'updated_at': instance.updated_at,
-            'custom_preferences': instance.custom_preferences,
+            'user_id': safe_get(instance, 'user_id'),
+            'created_at': safe_get(instance, 'created_at'),
+            'updated_at': safe_get(instance, 'updated_at'),
+            'custom_preferences': safe_get(instance, 'custom_preferences', {}),
             
-            # Onboarding and Profile Completion Fields (CRITICAL!)
-            'onboarding_status': instance.onboarding_status,  # NEW: Unified status field
-            'onboarding_completed': instance.onboarding_completed,  # Compatibility
-            'profile_completion_percentage': instance.profile_completion_percentage,
-            'onboarding_completed_at': instance.onboarding_completed_at,
-            'last_completion_prompt_shown': instance.last_completion_prompt_shown,
-            'completion_prompt_dismissed_count': instance.completion_prompt_dismissed_count,
+            # Onboarding and Profile Completion Fields (CRITICAL!) - with safe access
+            'onboarding_status': safe_get(instance, 'onboarding_status', 'not_started'),
+            'onboarding_completed': safe_get(instance, 'onboarding_completed', False),
+            'profile_completion_percentage': safe_get(instance, 'profile_completion_percentage', 0.0),
+            'onboarding_completed_at': safe_get(instance, 'onboarding_completed_at'),
+            'last_completion_prompt_shown': safe_get(instance, 'last_completion_prompt_shown'),
+            'completion_prompt_dismissed_count': safe_get(instance, 'completion_prompt_dismissed_count', 0),
             
-            # Quick onboarding fields
-            'quick_onboarding_completed': instance.quick_onboarding_completed,  # Compatibility
-            'quick_onboarding_data': instance.quick_onboarding_data,
+            # Quick onboarding fields - with safe access
+            'quick_onboarding_completed': safe_get(instance, 'quick_onboarding_completed', False),
+            'quick_onboarding_data': safe_get(instance, 'quick_onboarding_data', {}),
             
-            # Gamification fields
-            'achievement_badges': instance.achievement_badges,
-            'completion_milestones': instance.completion_milestones,
-            'streak_data': instance.streak_data,
+            # Gamification fields - with safe access
+            'achievement_badges': safe_get(instance, 'achievement_badges', []),
+            'completion_milestones': safe_get(instance, 'completion_milestones', {}),
+            'streak_data': safe_get(instance, 'streak_data', {}),
         }
         
-        # Serialize nested objects
-        if instance.basic_info:
-            data['basic_info'] = BasicInfoSerializer(instance.basic_info).data
+        # Serialize nested objects with safe access
+        try:
+            if safe_get(instance, 'basic_info'):
+                data['basic_info'] = BasicInfoSerializer(instance.basic_info).data
+            else:
+                data['basic_info'] = None
+        except Exception:
+            data['basic_info'] = None
         
-        if instance.content_preferences:
-            data['content_preferences'] = ContentPreferencesSerializer(instance.content_preferences).data
+        try:
+            if safe_get(instance, 'content_preferences'):
+                data['content_preferences'] = ContentPreferencesSerializer(instance.content_preferences).data
+            else:
+                data['content_preferences'] = None
+        except Exception:
+            data['content_preferences'] = None
         
-        if instance.ai_insights:
-            data['ai_insights'] = AIInsightsSerializer(instance.ai_insights).data
+        try:
+            if safe_get(instance, 'ai_insights'):
+                data['ai_insights'] = AIInsightsSerializer(instance.ai_insights).data
+            else:
+                data['ai_insights'] = None
+        except Exception:
+            data['ai_insights'] = None
         
-        # Recent interactions (limit to last 50 for performance)
-        recent_interactions = instance.get_recent_interactions(days=30)[:50]
-        data['interactions'] = InteractionDataSerializer(recent_interactions, many=True).data
+        # Recent interactions (limit to last 50 for performance) - with safe access
+        try:
+            recent_interactions = instance.get_recent_interactions(days=30)[:50] if hasattr(instance, 'get_recent_interactions') else []
+            data['interactions'] = InteractionDataSerializer(recent_interactions, many=True).data
+        except Exception:
+            data['interactions'] = []
         
         return data
 

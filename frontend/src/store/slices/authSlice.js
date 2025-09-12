@@ -9,6 +9,7 @@ const initialState = {
   isAuthenticated: false,
   isLoading: false,
   error: null,
+  tokenTimestamp: null, // Track when tokens were stored for validation
   // MFA state management
   mfa: {
     isEnrolling: false,
@@ -48,6 +49,11 @@ const authSlice = createSlice({
         };
       }
       
+      // Set timestamp when storing new tokens for persistence validation
+      if (state.tokens.access) {
+        state.tokenTimestamp = Date.now();
+      }
+      
       // Only set authenticated if we have a valid access token
       state.isAuthenticated = !!(state.tokens.access && state.user);
       state.error = null;
@@ -61,6 +67,7 @@ const authSlice = createSlice({
       };
       state.isAuthenticated = false;
       state.error = null;
+      state.tokenTimestamp = null;
       
       // Clear any auth-related cookies that can be cleared from JS
       // Note: httpOnly cookies (refresh_token) will be cleared by the backend
@@ -146,6 +153,7 @@ const authSlice = createSlice({
         access: null,
         refresh: null,
       };
+      state.tokenTimestamp = null;
       state.error = null;
     },
   },
@@ -200,6 +208,53 @@ export const selectPasswordResetState = (state) => state.auth.passwordReset;
 export const selectPasswordResetIsRequesting = (state) => state.auth.passwordReset.isRequesting;
 export const selectPasswordResetEmail = (state) => state.auth.passwordReset.resetEmail;
 export const selectPasswordResetIsResetting = (state) => state.auth.passwordReset.isResetting;
+
+// Token validation selectors
+export const selectTokenTimestamp = (state) => state.auth.tokenTimestamp;
+
+// Helper selector to check if current tokens are valid and not expired
+export const selectAreTokensValid = (state) => {
+  const { tokens, tokenTimestamp, user } = state.auth;
+  
+  // Must have access token and user
+  if (!tokens?.access || !user) {
+    return false;
+  }
+  
+  // Check token age if timestamp exists
+  if (tokenTimestamp) {
+    const tokenAge = Date.now() - tokenTimestamp;
+    const maxAge = 23 * 60 * 60 * 1000; // 23 hours
+    
+    if (tokenAge > maxAge) {
+      return false;
+    }
+  }
+  
+  return true;
+};
+
+// Helper selector to check if tokens need refresh
+export const selectShouldRefreshTokens = (state) => {
+  const { tokens, tokenTimestamp, user } = state.auth;
+  
+  // If no access token but we have user, should try to refresh
+  if (!tokens?.access && user) {
+    return true;
+  }
+  
+  // If token is getting old (20+ hours), should refresh
+  if (tokenTimestamp && tokens?.access) {
+    const tokenAge = Date.now() - tokenTimestamp;
+    const refreshThreshold = 20 * 60 * 60 * 1000; // 20 hours
+    
+    if (tokenAge > refreshThreshold) {
+      return true;
+    }
+  }
+  
+  return false;
+};
 
 // Computed selectors
 export const selectUserMFAEnabled = (state) => state.auth.user?.mfa_enrolled || false;

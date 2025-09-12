@@ -26,11 +26,44 @@ const storage = typeof window !== 'undefined'
   : createNoopStorage();
 
 // Redux Persist Configuration
-// Note: Only persist user data, not auth state or tokens for security
+// Persist user data and tokens with expiration validation for better UX
 const persistConfig = {
   key: 'auth',
   storage,
-  whitelist: ['user'], // Only persist user data - auth state recalculated on page load
+  whitelist: ['user', 'tokens', 'isAuthenticated'], // Persist tokens with validation on load
+  // Add transform to validate tokens on rehydration
+  transforms: [
+    {
+      in: (state) => {
+        // Add timestamp when storing tokens
+        if (state?.tokens?.access) {
+          return {
+            ...state,
+            tokenTimestamp: Date.now()
+          };
+        }
+        return state;
+      },
+      out: (state) => {
+        // Validate tokens on rehydration (max 23 hours for safety)
+        if (state?.tokenTimestamp && state?.tokens?.access) {
+          const tokenAge = Date.now() - state.tokenTimestamp;
+          const maxAge = 23 * 60 * 60 * 1000; // 23 hours
+          
+          if (tokenAge > maxAge) {
+            // Token too old, clear it
+            return {
+              ...state,
+              tokens: { access: null, refresh: null },
+              isAuthenticated: false,
+              tokenTimestamp: null
+            };
+          }
+        }
+        return state;
+      }
+    }
+  ]
 };
 
 const persistedAuthReducer = persistReducer(persistConfig, authReducer);

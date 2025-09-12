@@ -4,7 +4,7 @@
 // RELEVANT FILES: authSlice.js, apiSlice.js, authApi.js, all preference components
 
 import { store } from '@/store';
-import { selectCurrentTokens, selectCurrentUser, selectIsAuthenticated } from '@/store/slices/authSlice';
+import { selectAuthTokens, selectCurrentUser, selectIsAuthenticated } from '@/store/slices/authSlice';
 
 /**
  * Get authentication headers for API requests
@@ -13,7 +13,7 @@ import { selectCurrentTokens, selectCurrentUser, selectIsAuthenticated } from '@
  */
 export const getAuthHeaders = () => {
   const state = store.getState();
-  const tokens = selectCurrentTokens(state);
+  const tokens = selectAuthTokens(state);
   const isAuthenticated = selectIsAuthenticated(state);
   
   if (!isAuthenticated || !tokens?.access) {
@@ -33,7 +33,7 @@ export const getAuthHeaders = () => {
  */
 export const getAccessToken = () => {
   const state = store.getState();
-  const tokens = selectCurrentTokens(state);
+  const tokens = selectAuthTokens(state);
   return tokens?.access || null;
 };
 
