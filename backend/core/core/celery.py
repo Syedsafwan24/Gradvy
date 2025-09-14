@@ -1,11 +1,19 @@
 import os
+import sys
+from pathlib import Path
 from celery import Celery
 from datetime import timedelta
+
+# Add backend directory to Python path for ml_services module discovery
+BASE_DIR = Path(__file__).resolve().parent.parent
+backend_path = str(BASE_DIR.parent)
+if backend_path not in sys.path:
+    sys.path.insert(0, backend_path)
 
 # Set the default Django settings module for the 'celery' program.
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 
-app = Celery('gradvy_analytics_pipeline')
+app = Celery('gradvy_data_pipeline')
 
 # Using a string here means the worker doesn't have to serialize
 # the configuration object to child processes.

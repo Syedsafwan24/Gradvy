@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     # Local apps
     'apps.auth.apps.AuthConfig',
     'apps.preferences.apps.PreferencesConfig',
+    'ml_services.apps.MlServicesConfig',  # ML Services for learning path generation
 ]
 
 # Celery Configuration
@@ -64,6 +65,12 @@ USED_BACKUP_CODE_RETENTION_DAYS = 90 # Used backup codes older than this will be
 # Celery Beat scheduler - using built-in file-based scheduler for local development
 # Note: django_celery_beat is disabled due to Django 5.1 compatibility issues
 CELERY_BEAT_SCHEDULER = 'celery.beat:PersistentScheduler'
+
+# Celery autodiscovery - include ml_services for task discovery
+CELERY_IMPORTS = [
+    'apps.preferences.tasks',
+    'ml_services.tasks',  # ML Services background tasks
+]
 
 # Custom user model
 AUTH_USER_MODEL = 'gradvy_auth.User'
@@ -317,4 +324,5 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 import sys
 sys.path.insert(0, os.path.join(BASE_DIR, 'apps'))
+sys.path.insert(0, BASE_DIR.parent)  # Add backend root directory for ml_services
 

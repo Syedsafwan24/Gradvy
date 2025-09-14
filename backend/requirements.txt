@@ -101,10 +101,33 @@ wcwidth==0.2.13
 # Development Dependencies (Optional - uncomment for advanced features)
 # celery-flower>=2.0.0  # Already included as flower==2.0.1
 
-# Optional Advanced ML Libraries (uncomment if needed)
-# tensorflow>=2.13.0
-# torch>=2.0.0
-# xgboost>=1.7.0
+# AI & Machine Learning Framework (for local AI-powered learning paths)
+# System Requirements: 16GB+ RAM recommended, 100GB+ disk space for models
+# GPU with 8GB+ VRAM recommended (NVIDIA preferred) for faster inference
+# Models download automatically on first use (internet connection required initially)
+
+# Core ML Framework
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# HuggingFace Ecosystem for Local Models (CodeLlama, Mistral, StarCoder, etc.)
+transformers>=4.30.0
+sentence-transformers>=2.2.2
+huggingface_hub>=0.15.1
+tokenizers>=0.13.3
+accelerate>=0.20.0
+
+# Model Optimization & Quantization (memory efficiency)
+bitsandbytes>=0.39.0  # 4-bit/8-bit quantization for large models
+optimum>=1.8.0        # HuggingFace model optimization
+
+# Progress bars for model downloads and training
+tqdm>=4.65.0
+
+# Optional Advanced ML Libraries (uncomment if needed for additional features)
+# tensorflow>=2.13.0  # If TensorFlow models needed
+# xgboost>=1.7.0      # For gradient boosting
 
 # Optional Analytics Visualization (uncomment if needed)
 # plotly>=5.15.0

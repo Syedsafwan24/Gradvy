@@ -90,8 +90,12 @@ class ContentPreferences(EmbeddedDocument):
     
     # Preferred learning platforms
     PLATFORM_CHOICES = [
-        'udemy', 'coursera', 'youtube', 'edx', 'khan_academy', 
-        'pluralsight', 'linkedin_learning', 'codecademy', 'freecodecamp'
+        'udemy', 'coursera', 'youtube', 'edx', 'khan_academy',
+        'pluralsight', 'linkedin_learning', 'codecademy', 'freecodecamp',
+        'skillshare', 'masterclass', 'brilliant', 'datacamp', 'codewars',
+        'hackerrank', 'leetcode', 'udacity', 'treehouse', 'laracasts',
+        'egghead', 'frontend_masters', 'css_tricks', 'mdn_web_docs',
+        'w3schools', 'stackoverflow', 'github', 'medium', 'dev_to'
     ]
     preferred_platforms = ListField(StringField(choices=PLATFORM_CHOICES), default=list)
     
@@ -456,7 +460,29 @@ class UserPreference(Document):
     
     # Quick onboarding data storage
     quick_onboarding_data = DictField(default=dict)
-    
+
+    # =================================================================
+    # BACKWARD COMPATIBILITY FIELDS (Legacy document support)
+    # =================================================================
+    # NOTE: These fields exist in legacy MongoDB documents but are now handled via properties.
+    # They are defined here to prevent MongoEngine from failing when loading old documents.
+    # The actual values should be computed via the @property methods below.
+    # TODO: Remove these fields after migrating all legacy documents to use onboarding_status
+
+    _legacy_onboarding_completed = BooleanField(
+        db_field='onboarding_completed',
+        default=None,
+        null=True,
+        help_text="DEPRECATED: Legacy field for backward compatibility. Use onboarding_status property instead."
+    )
+
+    _legacy_quick_onboarding_completed = BooleanField(
+        db_field='quick_onboarding_completed',
+        default=None,
+        null=True,
+        help_text="DEPRECATED: Legacy field for backward compatibility. Use onboarding_status property instead."
+    )
+
     # Gamification elements
     achievement_badges = ListField(StringField(max_length=50), default=list)
     completion_milestones = DictField(default=dict)
@@ -913,21 +939,45 @@ class UserPreference(Document):
     # Compatibility properties for legacy code that uses old boolean fields
     @property
     def onboarding_completed(self):
-        """Compatibility property for legacy code"""
+        """
+        Compatibility property for legacy code.
+        Returns True if onboarding is completed (either quick or full).
+        Handles both new onboarding_status field and legacy boolean fields.
+        """
         try:
-            if not hasattr(self, 'onboarding_status') or self.onboarding_status is None:
-                return False
-            return self.onboarding_status in ['quick_completed', 'full_completed']
+            # First try to use the new unified onboarding_status field
+            if hasattr(self, 'onboarding_status') and self.onboarding_status is not None:
+                return self.onboarding_status in ['quick_completed', 'full_completed']
+
+            # Fallback to legacy fields for backward compatibility
+            if hasattr(self, '_legacy_onboarding_completed') and self._legacy_onboarding_completed is not None:
+                return self._legacy_onboarding_completed
+
+            # Default to False if neither field is available
+            return False
+
         except (AttributeError, Exception):
             return False
-    
+
     @property
     def quick_onboarding_completed(self):
-        """Compatibility property for legacy code"""
+        """
+        Compatibility property for legacy code.
+        Returns True if quick onboarding is completed.
+        Handles both new onboarding_status field and legacy boolean fields.
+        """
         try:
-            if not hasattr(self, 'onboarding_status') or self.onboarding_status is None:
-                return False
-            return self.onboarding_status in ['quick_completed', 'full_completed']
+            # First try to use the new unified onboarding_status field
+            if hasattr(self, 'onboarding_status') and self.onboarding_status is not None:
+                return self.onboarding_status in ['quick_completed', 'full_completed']
+
+            # Fallback to legacy fields for backward compatibility
+            if hasattr(self, '_legacy_quick_onboarding_completed') and self._legacy_quick_onboarding_completed is not None:
+                return self._legacy_quick_onboarding_completed
+
+            # Default to False if neither field is available
+            return False
+
         except (AttributeError, Exception):
             return False
     

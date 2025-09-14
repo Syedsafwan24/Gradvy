@@ -4,6 +4,34 @@
 
 set -e
 
+# Set cross-platform virtual environment activation commands
+VENV_ACTIVATE_LINUX="source venv/bin/activate"
+VENV_ACTIVATE_WINDOWS="source venv/Scripts/activate"
+VENV_ACTIVATE_WINDOWS_CMD="venv\\Scripts\\activate.bat"
+VENV_ACTIVATE_DEFAULT="source venv/bin/activate"
+
+# Cross-platform virtual environment activation function
+activate_venv() {
+    # Detect operating system
+    case "$(uname -s)" in
+        Linux*)
+            VENV_CMD="${VENV_ACTIVATE_LINUX:-source venv/bin/activate}"
+            ;;
+        Darwin*)
+            VENV_CMD="${VENV_ACTIVATE_LINUX:-source venv/bin/activate}"
+            ;;
+        CYGWIN*|MINGW32*|MSYS*|MINGW*)
+            VENV_CMD="${VENV_ACTIVATE_WINDOWS:-source venv/Scripts/activate}"
+            ;;
+        *)
+            VENV_CMD="${VENV_ACTIVATE_DEFAULT:-source venv/bin/activate}"
+            ;;
+    esac
+
+    # Execute the activation command
+    eval "$VENV_CMD"
+}
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -68,7 +96,7 @@ fi
 
 # Activate virtual environment
 print_status "Activating virtual environment..."
-source venv/bin/activate
+activate_venv
 
 # Upgrade pip
 print_status "Upgrading pip..."
@@ -161,7 +189,7 @@ if python -c "import mongoengine, pymongo; print('MongoDB dependencies: OK')" 2>
 else
     print_warning "MongoDB dependencies test failed. Installing additional packages..."
     cd ..
-    source venv/bin/activate
+    activate_venv
     pip install pymongo==4.6.0 mongoengine==0.27.0 dnspython==2.4.2
     cd core
     if python -c "import mongoengine, pymongo; print('MongoDB dependencies: OK')" 2>/dev/null; then

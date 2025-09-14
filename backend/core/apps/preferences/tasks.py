@@ -19,7 +19,7 @@ from django.db.models import Q, F, Count, Avg, Max, Min
 from mongoengine import Q as MongoQ
 
 from .models import UserPreference
-from apps.gradvy_auth.models import User
+from apps.auth.models import User
 
 logger = logging.getLogger(__name__)
 

@@ -66,11 +66,20 @@ Do What has be asked; nothing more, nothing less
 
 ## Development Commands
 
+### Cross-Platform Virtual Environment Support
+
+All development scripts now support cross-platform virtual environment activation:
+- **Linux/Mac**: Uses `source venv/bin/activate`
+- **Windows (Git Bash/WSL)**: Uses `source venv/Scripts/activate`
+- **Windows (CMD)**: Uses `venv\Scripts\activate.bat`
+- **Configuration**: Set via `.env` variables (`VENV_ACTIVATE_LINUX`, `VENV_ACTIVATE_WINDOWS`, etc.)
+- **Auto-detection**: Scripts automatically detect the operating system and use the appropriate activation command
+
 ### Initial Setup
 
 ```bash
 # Backend setup - run from backend/
-./scripts/local-setup.sh     # Complete environment setup
+./scripts/local-setup.sh     # Complete environment setup (cross-platform)
 ./scripts/data-start.sh      # Start Docker data services
 ./scripts/local-migrate.sh   # Run database migrations
 ./scripts/local-superuser.sh # Create admin user
@@ -238,9 +247,14 @@ The MFA system is comprehensive with TOTP and backup codes. Key files:
 
 ### Environment Configuration
 
-- Backend: `.env` file with PostgreSQL, Redis, MongoDB connections
-- Frontend: Next.js environment variables for API endpoints
-- Use `./scripts/validate-setup.sh` to verify configuration
+- **Backend**: `.env` file with PostgreSQL, Redis, MongoDB connections
+- **Cross-platform venv**: Virtual environment activation commands configured in `.env`:
+  - `VENV_ACTIVATE_LINUX=source venv/bin/activate` (Linux/Mac default)
+  - `VENV_ACTIVATE_WINDOWS=source venv/Scripts/activate` (Windows Git Bash/WSL)
+  - `VENV_ACTIVATE_WINDOWS_CMD=venv\\Scripts\\activate.bat` (Windows CMD)
+  - `VENV_ACTIVATE_DEFAULT=source venv/bin/activate` (fallback)
+- **Frontend**: Next.js environment variables for API endpoints
+- **Validation**: Use `./scripts/validate-setup.sh` to verify cross-platform configuration
 
 ### Debugging
 

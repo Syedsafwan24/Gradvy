@@ -4,6 +4,34 @@
 
 set -e
 
+# Set cross-platform virtual environment activation commands
+VENV_ACTIVATE_LINUX="source venv/bin/activate"
+VENV_ACTIVATE_WINDOWS="source venv/Scripts/activate"
+VENV_ACTIVATE_WINDOWS_CMD="venv\\Scripts\\activate.bat"
+VENV_ACTIVATE_DEFAULT="source venv/bin/activate"
+
+# Cross-platform virtual environment activation function
+activate_venv() {
+    # Detect operating system
+    case "$(uname -s)" in
+        Linux*)
+            VENV_CMD="${VENV_ACTIVATE_LINUX:-source venv/bin/activate}"
+            ;;
+        Darwin*)
+            VENV_CMD="${VENV_ACTIVATE_LINUX:-source venv/bin/activate}"
+            ;;
+        CYGWIN*|MINGW32*|MSYS*|MINGW*)
+            VENV_CMD="${VENV_ACTIVATE_WINDOWS:-source venv/Scripts/activate}"
+            ;;
+        *)
+            VENV_CMD="${VENV_ACTIVATE_DEFAULT:-source venv/bin/activate}"
+            ;;
+    esac
+
+    # Execute the activation command
+    eval "$VENV_CMD"
+}
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -82,7 +110,7 @@ if [ -d "venv" ]; then
     
     # Check if virtual environment has required packages
     if [ -f "venv/bin/activate" ]; then
-        source venv/bin/activate
+        activate_venv
         
         # Test Django
         if python -c "import django; print(f'Django {django.get_version()}')" >/dev/null 2>&1; then
@@ -213,8 +241,8 @@ echo ""
 # 4. Django Application Validation
 print_header "Django Application"
 
-if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
-    source venv/bin/activate
+if [ -d "venv" ]; then
+    activate_venv
     cd core
     
     # Django check

@@ -4,6 +4,34 @@
 
 set -e
 
+# Set cross-platform virtual environment activation commands
+VENV_ACTIVATE_LINUX="source venv/bin/activate"
+VENV_ACTIVATE_WINDOWS="source venv/Scripts/activate"
+VENV_ACTIVATE_WINDOWS_CMD="venv\\Scripts\\activate.bat"
+VENV_ACTIVATE_DEFAULT="source venv/bin/activate"
+
+# Cross-platform virtual environment activation function
+activate_venv() {
+    # Detect operating system
+    case "$(uname -s)" in
+        Linux*)
+            VENV_CMD="${VENV_ACTIVATE_LINUX:-source venv/bin/activate}"
+            ;;
+        Darwin*)
+            VENV_CMD="${VENV_ACTIVATE_LINUX:-source venv/bin/activate}"
+            ;;
+        CYGWIN*|MINGW32*|MSYS*|MINGW*)
+            VENV_CMD="${VENV_ACTIVATE_WINDOWS:-source venv/Scripts/activate}"
+            ;;
+        *)
+            VENV_CMD="${VENV_ACTIVATE_DEFAULT:-source venv/bin/activate}"
+            ;;
+    esac
+
+    # Execute the activation command
+    eval "$VENV_CMD"
+}
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -40,9 +68,9 @@ if ! docker-compose ps | grep gradvy-redis | grep -q "Up"; then
     exit 1
 fi
 
-# Activate virtual environment  
+# Activate virtual environment
 print_status "Activating virtual environment..."
-source venv/bin/activate
+activate_venv
 
 # Navigate to Django project
 cd core

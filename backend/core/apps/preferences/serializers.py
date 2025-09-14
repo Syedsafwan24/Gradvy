@@ -183,37 +183,69 @@ class UserPreferenceSerializer(serializers.Serializer):
         """Convert MongoDB document to JSON representation"""
         if instance is None:
             return None
-        
-        # Safe getter function with fallback values
+
+        # Safe getter function with fallback values for database fields
         def safe_get(obj, attr, default=None):
             try:
                 return getattr(obj, attr, default)
             except (AttributeError, Exception):
                 return default
-        
+
+        # Special function to safely access Python properties without triggering MongoEngine field lookups
+        def safe_get_property(obj, property_name, default=None):
+            """Safely access Python properties that are defined with @property decorator"""
+            try:
+                # First check if the property method exists on the class
+                if hasattr(obj.__class__, property_name):
+                    prop_descriptor = getattr(obj.__class__, property_name)
+                    # Verify it's actually a property
+                    if isinstance(prop_descriptor, property):
+                        # Call the property getter directly
+                        return prop_descriptor.fget(obj)
+                # Fallback to regular attribute access
+                return getattr(obj, property_name, default)
+            except (AttributeError, Exception) as e:
+                # Log the error for debugging but don't break serialization
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Error accessing property '{property_name}' on {obj.__class__.__name__}: {str(e)}")
+                return default
+
         data = {
             'user_id': safe_get(instance, 'user_id'),
             'created_at': safe_get(instance, 'created_at'),
             'updated_at': safe_get(instance, 'updated_at'),
             'custom_preferences': safe_get(instance, 'custom_preferences', {}),
-            
+
             # Onboarding and Profile Completion Fields (CRITICAL!) - with safe access
             'onboarding_status': safe_get(instance, 'onboarding_status', 'not_started'),
-            'onboarding_completed': safe_get(instance, 'onboarding_completed', False),
             'profile_completion_percentage': safe_get(instance, 'profile_completion_percentage', 0.0),
             'onboarding_completed_at': safe_get(instance, 'onboarding_completed_at'),
             'last_completion_prompt_shown': safe_get(instance, 'last_completion_prompt_shown'),
             'completion_prompt_dismissed_count': safe_get(instance, 'completion_prompt_dismissed_count', 0),
-            
-            # Quick onboarding fields - with safe access
-            'quick_onboarding_completed': safe_get(instance, 'quick_onboarding_completed', False),
             'quick_onboarding_data': safe_get(instance, 'quick_onboarding_data', {}),
-            
+
             # Gamification fields - with safe access
             'achievement_badges': safe_get(instance, 'achievement_badges', []),
             'completion_milestones': safe_get(instance, 'completion_milestones', {}),
             'streak_data': safe_get(instance, 'streak_data', {}),
         }
+
+        # Handle Python properties separately to avoid MongoEngine field lookup issues
+        try:
+            # These are @property methods, not database fields - handle them specially
+            data['onboarding_completed'] = safe_get_property(instance, 'onboarding_completed', False)
+            data['quick_onboarding_completed'] = safe_get_property(instance, 'quick_onboarding_completed', False)
+        except Exception as e:
+            # If properties fail, compute them manually from onboarding_status
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Property access failed for user {safe_get(instance, 'user_id')}, computing manually: {str(e)}")
+
+            onboarding_status = safe_get(instance, 'onboarding_status', 'not_started')
+            is_completed = onboarding_status in ['quick_completed', 'full_completed']
+            data['onboarding_completed'] = is_completed
+            data['quick_onboarding_completed'] = is_completed
         
         # Serialize nested objects with safe access
         try:

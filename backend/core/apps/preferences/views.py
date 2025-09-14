@@ -127,10 +127,76 @@ class UserPreferenceView(views.APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             
         except Exception as e:
-            logger.error(f"Error updating preferences for user {request.user.id}: {str(e)}")
+            # Enhanced error handling for MongoDB validation failures
+            error_message = str(e)
+            logger.error(f"Error updating preferences for user {request.user.id}: {error_message}")
+
+            # Comprehensive logging for debugging
+            logger.error(f"Request data: {request.data}")
+            logger.error(f"Exception type: {type(e).__name__}")
+            logger.error(f"Full error details: {repr(e)}")
+
+            # Check if this is a MongoDB validation error
+            if 'Document failed validation' in error_message:
+                # Parse MongoDB validation error for user-friendly message
+                user_friendly_error = self._parse_mongodb_validation_error(error_message)
+                return Response({
+                    'error': 'Validation Error',
+                    'message': user_friendly_error,
+                    'details': 'Some of your preferences contain invalid values. Please check your selections.',
+                    'error_type': 'validation_error'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Check for other common MongoDB errors
+            elif 'Could not save document' in error_message:
+                return Response({
+                    'error': 'Save Error',
+                    'message': 'Unable to save your preferences due to data validation issues.',
+                    'details': 'Please check that all your selections are from the available options.',
+                    'error_type': 'save_error'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Generic error fallback
             return Response({
-                'error': 'Failed to update preferences'
+                'error': 'Failed to update preferences',
+                'message': 'An unexpected error occurred while updating your preferences.',
+                'error_type': 'internal_error'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def _parse_mongodb_validation_error(self, error_message):
+        """
+        Parse MongoDB validation error message to provide user-friendly feedback
+        """
+        try:
+            # Common validation error patterns
+            if 'preferred_platforms' in error_message:
+                if 'freecodecamp' in error_message:
+                    return "The platform 'FreeCodeCamp' is not currently supported. Please choose from the available learning platforms."
+                elif 'enum' in error_message and 'consideredValue' in error_message:
+                    # Extract the invalid value from the error
+                    import re
+                    match = re.search(r"'consideredValue': '([^']+)'", error_message)
+                    if match:
+                        invalid_value = match.group(1)
+                        return f"The platform '{invalid_value}' is not currently supported. Please choose from the available learning platforms."
+                    return "One or more selected learning platforms are not currently supported."
+                return "Invalid learning platform selection. Please choose from the available options."
+
+            elif 'content_types' in error_message:
+                return "Invalid content type selection. Please choose from the available content types."
+
+            elif 'difficulty_preference' in error_message:
+                return "Invalid difficulty level selection. Please choose from: Beginner, Intermediate, Advanced, or Mixed."
+
+            elif 'duration_preference' in error_message:
+                return "Invalid duration preference selection. Please choose from: Short, Medium, Long, or Mixed."
+
+            # Generic fallback
+            return "Some of your selections are invalid. Please review your choices and try again."
+
+        except Exception:
+            # If parsing fails, return generic message
+            return "Invalid data detected. Please check your selections and try again."
 
 
 @method_decorator(csrf_exempt, name='dispatch')
