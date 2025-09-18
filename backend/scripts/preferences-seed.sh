@@ -80,7 +80,7 @@ echo ""
 print_header "Django Models Validation"
 
 cd core
-source ../venv/bin/activate
+source ../venv/scripts/activate
 
 # Test Django setup
 if ! python manage.py check --database default >/dev/null 2>&1; then

@@ -7,7 +7,7 @@ import {
 	CardDescription,
 	CardHeader,
 	CardTitle,
-} from '../ui/Card';
+} from '../ui/card';
 import { Brain, MapPin, BarChart3, Code, Timer, Layers } from 'lucide-react';
 
 const Features = () => {

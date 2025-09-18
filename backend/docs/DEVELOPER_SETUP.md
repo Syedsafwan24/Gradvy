@@ -228,7 +228,7 @@ python -m venv venv
 venv\Scripts\activate
 
 # Activate it (Linux/macOS)
-source venv/bin/activate
+source venv/scripts/activate
 
 # You should see (venv) in your terminal prompt
 ```
@@ -357,7 +357,7 @@ You should see containers named:
 
    ```bash
    # Activate virtual environment
-   source venv/bin/activate  # Linux/macOS
+   source venv/scripts/activate  # Linux/macOS
    venv\Scripts\activate     # Windows
 
    # Start Docker services
@@ -425,7 +425,7 @@ print(f"Task ID: {result.task_id}")
 **Solution**: Make sure your virtual environment is activated and dependencies are installed:
 
 ```bash
-source venv/bin/activate  # or venv\Scripts\activate on Windows
+source venv/scripts/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 ```
 

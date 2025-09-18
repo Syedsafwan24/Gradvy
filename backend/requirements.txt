@@ -21,7 +21,6 @@ mongoengine==0.27.0
 pymongo==4.6.0
 psycopg==3.2.9
 psycopg-binary==3.2.9
-psycopg2-binary==2.9.9
 dj-database-url==2.1.0
 
 # Task Queue & Background Processing
