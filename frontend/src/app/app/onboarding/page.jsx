@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { ArrowLeft, ArrowRight, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useSubmitOnboardingMutation, preferencesApi } from '@/services/preferencesApi';
+import { useSubmitOnboardingMutation, useLogInteractionMutation, preferencesApi } from '@/services/preferencesApi';
 import { loadOnboardingProgress, saveOnboardingStep, clearOnboardingProgress } from '@/utils/onboardingProgressStore';
 import { normalizeApiError } from '@/utils/apiErrors';
 
@@ -91,6 +91,7 @@ export default function OnboardingPage() {
   
   // RTK Query mutations
   const [submitOnboarding, { isLoading: isSubmitting, error: submitError }] = useSubmitOnboardingMutation();
+  const [logInteraction] = useLogInteractionMutation();
   const [lastSavedAt, setLastSavedAt] = useState(null); // local draft save feedback
   
   const [currentStep, setCurrentStep] = useState(0);
@@ -140,26 +141,23 @@ export default function OnboardingPage() {
         _startTime: Date.now()
       }));
 
-      // Track page visit
+      // Track page visit using RTK Query
       const trackStart = async () => {
         try {
-          await fetch('/api/preferences/interactions/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              type: 'onboarding_started',
-              data: {
-                start_time: new Date().toISOString(),
-                user_agent: navigator.userAgent,
-                screen_resolution: `${screen.width}x${screen.height}`,
-              },
-              context: {
-                source: 'onboarding_page',
-                referrer: document.referrer,
-              }
-            })
-          });
+          await logInteraction({
+            type: 'page_view',  // Changed from 'onboarding_started' for MongoDB compatibility
+            data: {
+              page: 'onboarding_start',
+              action: 'onboarding_started',
+              start_time: new Date().toISOString(),
+              user_agent: navigator.userAgent,
+              screen_resolution: `${screen.width}x${screen.height}`,
+            },
+            context: {
+              source: 'onboarding_page',
+              referrer: document.referrer,
+            }
+          }).unwrap();
         } catch (error) {
           console.warn('Failed to track onboarding start:', error);
         }
@@ -167,7 +165,7 @@ export default function OnboardingPage() {
 
       trackStart();
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, router, logInteraction]);
 
   // Calculate progress percentage
   const progressPercentage = ((currentStep + 1) / ONBOARDING_STEPS.length) * 100;
@@ -320,8 +318,8 @@ export default function OnboardingPage() {
         _completionTime: Date.now()
       };
 
-      // Submit onboarding data using RTK Query
-      const result = await submitOnboarding({
+      // Enhanced debug logging for onboarding submission
+      const onboardingPayload = {
         learning_goals: submissionData.learning_goals || [],
         experience_level: submissionData.experience_level || '',
         preferred_pace: submissionData.preferred_pace || '',
@@ -332,11 +330,71 @@ export default function OnboardingPage() {
         preferred_platforms: submissionData.preferred_platforms || [],
         content_types: submissionData.content_types || [],
         language_preference: submissionData.language_preference || ['english']
-      }).unwrap();
+      };
 
-      
-      // Invalidate the preferences cache immediately to ensure fresh data
-      dispatch(preferencesApi.util.invalidateTags(['UserPreferences']));
+      console.log('🎯 ONBOARDING SUBMISSION START');
+      console.log('📦 Payload keys:', Object.keys(onboardingPayload));
+      console.log('📋 Payload details:', onboardingPayload);
+      console.log('📊 Data completeness:', {
+        learning_goals: onboardingPayload.learning_goals.length,
+        basic_fields: [onboardingPayload.experience_level, onboardingPayload.preferred_pace, onboardingPayload.time_availability].filter(Boolean).length,
+        learning_style: onboardingPayload.learning_style.length,
+        content_fields: [onboardingPayload.preferred_platforms, onboardingPayload.content_types, onboardingPayload.language_preference].filter(arr => arr && arr.length > 0).length
+      });
+
+      // Submit onboarding data using RTK Query
+      console.log('🚀 Calling submitOnboarding API...');
+      const result = await submitOnboarding(onboardingPayload).unwrap();
+
+      console.log('✅ ONBOARDING SUBMISSION SUCCESS');
+      console.log('📤 API Response:', result);
+      console.log('🔍 Response keys:', Object.keys(result || {}));
+
+      if (result?.preferences) {
+        console.log('📊 Preferences in response:', Object.keys(result.preferences));
+        console.log('📈 Profile completion:', result.preferences.profile_completion_percentage);
+      }
+
+      // Enhanced cache invalidation with forced refetch
+      console.log('🔄 Invalidating preferences cache with forced refetch...');
+
+      // Invalidate all preference-related tags
+      dispatch(preferencesApi.util.invalidateTags([
+        'UserPreferences',
+        { type: 'UserPreferences', id: 'CURRENT_USER' },
+        { type: 'BasicInfo', id: 'CURRENT_USER' },
+        { type: 'ContentPreferences', id: 'CURRENT_USER' },
+        { type: 'OnboardingStatus', id: 'CURRENT_USER' }
+      ]));
+
+      // Force immediate cache refresh by manually refetching
+      console.log('🔄 Forcing immediate cache refresh...');
+      dispatch(preferencesApi.endpoints.getUserPreferences.initiate(undefined, {
+        subscribe: false,
+        forceRefetch: true
+      }));
+
+      // Cache warming - prefetch preferences data immediately
+      console.log('🔥 Cache warming - prefetching preferences data...');
+      try {
+        const prefetchResult = await dispatch(preferencesApi.endpoints.getUserPreferences.initiate(undefined, {
+          subscribe: false,
+          forceRefetch: true
+        })).unwrap();
+
+        console.log('✅ Cache warming successful - preferences prefetched');
+        console.log('📦 Prefetched data keys:', Object.keys(prefetchResult || {}));
+
+        // Verify the prefetched data contains onboarding results
+        if (prefetchResult?.basic_info || prefetchResult?.content_preferences) {
+          console.log('✅ Prefetched data contains onboarding results');
+        } else {
+          console.warn('⚠️  Prefetched data missing onboarding results');
+        }
+
+      } catch (prefetchError) {
+        console.error('❌ Cache warming failed:', prefetchError);
+      }
 
       // Track completion
       await trackCompletion(submissionData);
@@ -345,7 +403,13 @@ export default function OnboardingPage() {
       toast.success('Welcome to Gradvy! Your personalized learning experience is ready.');
 
       // Clear local draft - completion is now tracked by backend
+      console.log('🧹 Clearing onboarding progress...');
       clearOnboardingProgress(user?.id, 'full');
+
+      // Enhanced debug logging for navigation
+      console.log('🔄 Cache invalidation completed');
+      console.log('📍 Navigating to dashboard...');
+      console.log('🎯 User should now see populated preferences');
 
       // Redirect to dashboard
       router.push('/app/dashboard');
@@ -386,25 +450,20 @@ export default function OnboardingPage() {
 
   const trackCompletion = async (data) => {
     try {
-      await fetch('/api/preferences/interactions/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+      await logInteraction({
+        type: 'page_view',  // Changed from 'onboarding_flow_completed' for MongoDB compatibility
+        data: {
+          page: 'onboarding_complete',
+          action: 'onboarding_flow_completed',
+          total_time: data._completionTime - data._startTime,
+          steps_completed: completedSteps.size,
+          errors_encountered: Object.keys(stepErrors).length,
         },
-        body: JSON.stringify({
-          type: 'onboarding_flow_completed',
-          data: {
-            total_time: data._completionTime - data._startTime,
-            steps_completed: completedSteps.size,
-            errors_encountered: Object.keys(stepErrors).length,
-          },
-          context: {
-            completed_at: new Date().toISOString(),
-            completion_rate: (completedSteps.size / ONBOARDING_STEPS.length) * 100,
-          }
-        })
-      });
+        context: {
+          completed_at: new Date().toISOString(),
+          completion_rate: (completedSteps.size / ONBOARDING_STEPS.length) * 100,
+        }
+      }).unwrap();
     } catch (error) {
       console.warn('Failed to track completion:', error);
     }
@@ -479,7 +538,7 @@ export default function OnboardingPage() {
                   <p className="text-xs text-gray-500 mt-1">
                     Already have basic preferences?{' '}
                     <button 
-                      onClick={() => router.push('/quick-onboarding')}
+                      onClick={() => router.push('/app/quick-onboarding')}
                       className="text-blue-600 hover:text-blue-700 underline"
                     >
                       Try quick setup instead

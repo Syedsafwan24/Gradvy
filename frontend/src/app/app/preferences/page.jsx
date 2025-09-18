@@ -40,7 +40,10 @@ import {
   useGetPersonalizedRecommendationsQuery,
   logUserInteraction,
   transformPreferenceData,
-  calculatePreferenceCompletion
+  calculatePreferenceCompletion,
+  updatePreferencesWithRetry,
+  preferencesDebugUtils,
+  validatePreferencesData
 } from '@/services/preferencesApi';
 import usePreferencesValidation from '@/hooks/usePreferencesValidation';
 
@@ -51,16 +54,79 @@ export default function PreferencesPage() {
   const [hasChanges, setHasChanges] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
 
+  // Local state for tracking unsaved changes
+  const [localChanges, setLocalChanges] = useState({});
+  const [isDirty, setIsDirty] = useState(false);
+
   // RTK Query hooks
   const {
     data: userPreferences,
     isLoading: loading,
     error: preferencesError,
-    refetch: refetchPreferences
+    refetch: refetchPreferences,
+    isFetching,
+    isSuccess,
+    isError,
+    originalArgs,
+    endpointName,
+    requestId,
+    startedTimeStamp,
+    fulfilledTimeStamp
   } = useGetUserPreferencesQuery(undefined, {
     skip: !isAuthenticated || !user,
     refetchOnMountOrArgChange: true
   });
+
+  // Enhanced debug logging for preferences loading
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      console.log('🔍 PREFERENCES PAGE INIT - Starting preferences fetch');
+      console.log('👤 User info:', { id: user?.id, username: user?.username });
+    }
+  }, [isAuthenticated, user]);
+
+  // Enhanced cache debugging for RTK Query
+  useEffect(() => {
+    console.log('🔍 RTK QUERY STATE CHANGE:');
+    console.log('   📊 Loading:', loading);
+    console.log('   🔄 Fetching:', isFetching);
+    console.log('   ✅ Success:', isSuccess);
+    console.log('   ❌ Error:', isError);
+    console.log('   🎯 Request ID:', requestId);
+    console.log('   ⏱️  Started:', startedTimeStamp ? new Date(startedTimeStamp).toISOString() : 'N/A');
+    console.log('   ✔️  Fulfilled:', fulfilledTimeStamp ? new Date(fulfilledTimeStamp).toISOString() : 'N/A');
+
+    if (loading) {
+      console.log('⏳ PREFERENCES LOADING - Fetching user preferences...');
+    } else if (preferencesError) {
+      console.error('❌ PREFERENCES ERROR - Failed to fetch preferences');
+      console.error('🔍 Error details:', preferencesError);
+      console.error('🔍 Error keys:', Object.keys(preferencesError || {}));
+    } else if (userPreferences) {
+      console.log('✅ PREFERENCES SUCCESS - Preferences loaded');
+      console.log('📦 Preferences keys:', Object.keys(userPreferences));
+      console.log('📊 Profile completion:', userPreferences.profile_completion_percentage);
+      console.log('🏷️  Onboarding status:', userPreferences.onboarding_status);
+      console.log('📋 Basic info exists:', !!userPreferences.basic_info);
+      console.log('🎯 Content prefs exists:', !!userPreferences.content_preferences);
+
+      if (userPreferences.basic_info) {
+        console.log('📋 Basic info fields:', Object.keys(userPreferences.basic_info));
+        console.log('🎯 Learning goals:', userPreferences.basic_info.learning_goals);
+      }
+
+      if (userPreferences.content_preferences) {
+        console.log('🎯 Content pref fields:', Object.keys(userPreferences.content_preferences));
+      }
+
+      // Cache freshness check
+      const cacheAge = fulfilledTimeStamp ? Date.now() - fulfilledTimeStamp : 'Unknown';
+      console.log('🕐 Cache age:', typeof cacheAge === 'number' ? `${cacheAge}ms` : cacheAge);
+
+    } else {
+      console.log('❓ PREFERENCES EMPTY - No data received');
+    }
+  }, [loading, isFetching, isSuccess, isError, preferencesError, userPreferences, requestId, startedTimeStamp, fulfilledTimeStamp]);
 
   const {
     data: analyticsData,
@@ -100,9 +166,19 @@ export default function PreferencesPage() {
   }, [isAuthenticated, user, activeTab, dispatch]);
 
   const handlePreferenceChange = async (section, updatedData) => {
+    const loadingToastId = toast.loading('Saving preferences...', {
+      icon: <RefreshCw className="w-4 h-4 animate-spin" />
+    });
+
     try {
       setHasChanges(true);
-      
+
+      // Debug logging
+      console.log('🔄 Starting preference update:', { section, updatedData });
+
+      // Log current cache state (removed faulty debug call - cache is working properly)
+      console.log('🔍 Cache state: RTK Query managing preferences cache automatically');
+
       // Validate the updated data first
       const testPreferences = {
         ...userPreferences,
@@ -112,42 +188,67 @@ export default function PreferencesPage() {
         }
       };
 
+      // Validate preferences data structure
+      const dataValidation = validatePreferencesData(testPreferences);
+      if (!dataValidation.isValid) {
+        console.warn('⚠️ Data validation warnings:', dataValidation.errors);
+      }
+
       // Trigger field-level validation for changed fields
       Object.keys(updatedData).forEach(fieldName => {
         validation.validateField(section, fieldName, updatedData[fieldName]);
       });
 
-      // Don't save if validation fails for critical fields
+      // Only block saves for critical validation errors (not for incomplete/partial data)
       const sectionValidation = validation.getSectionValidation(section);
-      if (section === 'basic_info' && sectionValidation.hasErrors) {
-        // For basic info, show validation errors but still allow saving
-        toast.error('Please fix validation errors before saving', {
+
+      // Allow saves even with minor validation errors during editing
+      // Only block for truly critical errors that would break the backend
+      const hasCriticalErrors = sectionValidation.hasErrors && Object.keys(sectionValidation.errors).some(field => {
+        const errors = sectionValidation.errors[field];
+        return errors.some(error =>
+          error.includes('required') ||
+          error.includes('invalid format') ||
+          error.includes('not a valid choice')
+        );
+      });
+
+      if (section === 'basic_info' && hasCriticalErrors) {
+        toast.dismiss(loadingToastId);
+        toast.error('Please fix critical validation errors before saving', {
           duration: 4000,
           icon: <AlertCircle className="w-4 h-4" />
         });
         return;
       }
-      
+
       // Transform the data to match backend schema
       const transformedData = transformPreferenceData({
         [section]: updatedData
       });
 
-      // Update preferences via RTK Query
-      const result = await updatePreferences(transformedData).unwrap();
-      
+      // Validate transformation output
+      preferencesDebugUtils.validateTransformOutput({ [section]: updatedData }, transformedData);
+
+      console.log('🔄 Transformed data:', transformedData);
+
+      // Update preferences with retry mechanism
+      const result = await updatePreferencesWithRetry(transformedData, dispatch, 3);
+
+      toast.dismiss(loadingToastId);
       setLastSaved(new Date());
       setHasChanges(false);
-      
-      // Show success toast with validation info
+
+      // Show success toast with attempt info
       const validationSummary = validation.summary;
-      toast.success(
-        `Preferences saved! ${validationSummary?.completionPercentage || 0}% complete`, 
-        {
-          duration: 3000,
-          icon: <CheckCircle className="w-4 h-4" />
-        }
-      );
+      const successMessage = result.attempts > 1
+        ? `Preferences saved after ${result.attempts} attempts! ${validationSummary?.completionPercentage || 0}% complete`
+        : `Preferences saved! ${validationSummary?.completionPercentage || 0}% complete`;
+
+      toast.success(successMessage, {
+        duration: 3000,
+        icon: <CheckCircle className="w-4 h-4" />
+      });
 
       // Log the preference change interaction
       logUserInteraction(dispatch, 'page_view', {
@@ -155,6 +256,7 @@ export default function PreferencesPage() {
         changes: Object.keys(updatedData),
         validation_state: validation.isValid,
         completion_percentage: validationSummary?.completionPercentage || 0,
+        attempts: result.attempts,
         timestamp: new Date().toISOString()
       }, {
         page: 'preferences_dashboard',
@@ -162,12 +264,201 @@ export default function PreferencesPage() {
       });
 
     } catch (error) {
+      toast.dismiss(loadingToastId);
       console.error('Failed to save preferences:', error);
-      toast.error(error?.message || 'Failed to save preferences. Please try again.', {
+
+      const errorMessage = error?.attempts > 1
+        ? `Failed to save preferences after ${error.attempts} attempts. ${error?.message || 'Please try again.'}`
+        : error?.message || 'Failed to save preferences. Please try again.';
+
+      toast.error(errorMessage, {
         duration: 5000,
         icon: <AlertCircle className="w-4 h-4" />
       });
     }
+  };
+
+  // Handle local preference changes without auto-saving
+  const handleLocalPreferenceChange = (section, updatedData) => {
+    console.log('🔄 Local preference change:', { section, updatedData });
+
+    // Update local changes state
+    setLocalChanges(prev => ({
+      ...prev,
+      [section]: {
+        ...prev[section],
+        ...updatedData
+      }
+    }));
+
+    // Mark as dirty
+    setIsDirty(true);
+
+    // Trigger field-level validation for feedback (but don't block)
+    Object.keys(updatedData).forEach(fieldName => {
+      validation.validateField(section, fieldName, updatedData[fieldName]);
+    });
+  };
+
+  // Manual save function - only called when user clicks Save
+  const handleSaveChanges = async () => {
+    if (!isDirty || Object.keys(localChanges).length === 0) {
+      toast.info('No changes to save');
+      return;
+    }
+
+    const loadingToastId = toast.loading('Saving preferences...', {
+      icon: <RefreshCw className="w-4 h-4 animate-spin" />
+    });
+
+    try {
+      console.log('💾 Saving local changes:', localChanges);
+
+      // Process each section with changes
+      for (const [section, sectionChanges] of Object.entries(localChanges)) {
+        // Build full section data for validation
+        const fullSectionData = {
+          ...userPreferences?.[section],
+          ...sectionChanges
+        };
+
+        // Check for critical validation errors before saving this section
+        const testPreferences = {
+          ...userPreferences,
+          [section]: fullSectionData
+        };
+
+        // Validate preferences data structure
+        const dataValidation = validatePreferencesData(testPreferences);
+        if (!dataValidation.isValid) {
+          console.warn('⚠️ Data validation warnings:', dataValidation.errors);
+        }
+
+        // Only block for critical errors that would break the backend
+        const sectionValidation = validation.getSectionValidation(section);
+        const hasCriticalErrors = sectionValidation.hasErrors && Object.keys(sectionValidation.errors).some(field => {
+          const errors = sectionValidation.errors[field];
+          return errors.some(error =>
+            error.includes('required') ||
+            error.includes('invalid format') ||
+            error.includes('not a valid choice')
+          );
+        });
+
+        if (section === 'basic_info' && hasCriticalErrors) {
+          toast.dismiss(loadingToastId);
+          toast.error(`Please fix critical validation errors in ${section} before saving`, {
+            duration: 4000,
+            icon: <AlertCircle className="w-4 h-4" />
+          });
+          return;
+        }
+
+        // Transform the data to match backend schema
+        // Use fullSectionData instead of sectionChanges to ensure complete data transformation
+        const transformedData = transformPreferenceData({
+          [section]: fullSectionData
+        });
+
+        console.log('🔄 Saving section:', section, 'with data:', transformedData);
+
+        // Debug: Log the exact payload being sent to the API
+        console.log('📤 API Payload Details:', {
+          section: section,
+          originalSectionChanges: sectionChanges,
+          fullSectionData: fullSectionData,
+          transformedData: transformedData,
+          apiEndpoint: '/api/preferences/',
+          method: 'PATCH',
+          dataSource: 'fullSectionData (merged with existing preferences)'
+        });
+
+        // Save this section
+        await updatePreferencesWithRetry(transformedData, dispatch, 3);
+      }
+
+      // Clear local changes after successful save
+      setLocalChanges({});
+      setIsDirty(false);
+      setLastSaved(new Date());
+      setHasChanges(false);
+
+      toast.dismiss(loadingToastId);
+      toast.success('All preferences saved successfully!', {
+        duration: 3000,
+        icon: <CheckCircle className="w-4 h-4" />
+      });
+
+      // Log the preference save interaction
+      const validationSummary = validation.summary;
+      logUserInteraction(dispatch, 'page_view', {
+        sections_saved: Object.keys(localChanges),
+        validation_state: validation.isValid,
+        completion_percentage: validationSummary?.completionPercentage || 0,
+        timestamp: new Date().toISOString()
+      }, {
+        page: 'preferences_dashboard',
+        action: 'manual_preferences_save'
+      });
+
+    } catch (error) {
+      toast.dismiss(loadingToastId);
+
+      // Enhanced error logging for debugging
+      console.error('❌ Failed to save preferences - Full error details:', {
+        error,
+        errorData: error?.data,
+        errorMessage: error?.message,
+        errorStatus: error?.status,
+        errorResponse: error?.response,
+        localChanges: localChanges,
+        stack: error?.stack
+      });
+
+      // Extract detailed error information
+      let detailedError = 'Failed to save preferences. Please try again.';
+
+      if (error?.data) {
+        // RTK Query error with data
+        if (typeof error.data === 'string') {
+          detailedError = error.data;
+        } else if (error.data.message) {
+          detailedError = error.data.message;
+        } else if (error.data.detail) {
+          detailedError = error.data.detail;
+        } else {
+          detailedError = JSON.stringify(error.data);
+        }
+      } else if (error?.message) {
+        detailedError = error.message;
+      }
+
+      const errorMessage = error?.attempts > 1
+        ? `Failed to save preferences after ${error.attempts} attempts. ${detailedError}`
+        : detailedError;
+
+      toast.error(errorMessage, {
+        duration: 8000,  // Longer duration for debugging
+        icon: <AlertCircle className="w-4 h-4" />
+      });
+    }
+  };
+
+  // Get merged preferences (saved + local changes)
+  const getMergedPreferences = () => {
+    if (!userPreferences) return null;
+
+    const merged = { ...userPreferences };
+
+    // Apply local changes
+    Object.keys(localChanges).forEach(section => {
+      merged[section] = {
+        ...merged[section],
+        ...localChanges[section]
+      };
+    });
+
+    return merged;
   };
 
   const exportPreferences = async () => {
@@ -207,7 +498,7 @@ export default function PreferencesPage() {
         });
         
         // Redirect to onboarding (preferences will be recreated there)
-        window.location.href = '/onboarding';
+        window.location.href = '/app/onboarding';
       } catch (error) {
         console.error('Failed to reset preferences:', error);
         toast.error('Failed to reset preferences.');
@@ -283,7 +574,29 @@ export default function PreferencesPage() {
                     )}
                   </div>
                 )}
-                
+
+                {/* Unsaved changes indicator */}
+                {isDirty && (
+                  <div className="flex items-center space-x-2 text-amber-600">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="text-sm font-medium">
+                      {Object.keys(localChanges).length} unsaved change{Object.keys(localChanges).length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                )}
+
+                {/* Save Changes button - only show when there are unsaved changes */}
+                {isDirty && (
+                  <Button
+                    onClick={handleSaveChanges}
+                    disabled={saving}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Changes
+                  </Button>
+                )}
+
                 <Button
                   variant="outline"
                   onClick={() => refetchPreferences()}
@@ -326,7 +639,7 @@ export default function PreferencesPage() {
                 </p>
                 {preferencesError?.onboarding_required && (
                   <Button
-                    onClick={() => window.location.href = '/onboarding'}
+                    onClick={() => window.location.href = '/app/onboarding'}
                     size="sm"
                   >
                     Complete Onboarding
@@ -368,29 +681,35 @@ export default function PreferencesPage() {
 
               <TabsContent value="overview" className="space-y-6">
                 <PreferencesOverview
-                  preferences={userPreferences}
+                  preferences={getMergedPreferences()}
                   loading={loading}
                   validation={validation}
-                  onPreferenceChange={handlePreferenceChange}
+                  onPreferenceChange={handleLocalPreferenceChange}
                   onResetToOnboarding={resetToOnboarding}
+                  isDirty={isDirty}
+                  localChanges={localChanges}
                 />
               </TabsContent>
 
               <TabsContent value="goals" className="space-y-6">
                 <LearningGoalsManager
-                  preferences={userPreferences}
+                  preferences={getMergedPreferences()}
                   loading={loading}
                   validation={validation}
-                  onPreferenceChange={handlePreferenceChange}
+                  onPreferenceChange={handleLocalPreferenceChange}
+                  isDirty={isDirty}
+                  localChanges={localChanges}
                 />
               </TabsContent>
 
               <TabsContent value="content" className="space-y-6">
                 <ContentPreferences
-                  preferences={userPreferences}
+                  preferences={getMergedPreferences()}
                   loading={loading}
                   validation={validation}
-                  onPreferenceChange={handlePreferenceChange}
+                  onPreferenceChange={handleLocalPreferenceChange}
+                  isDirty={isDirty}
+                  localChanges={localChanges}
                 />
               </TabsContent>
 
@@ -403,11 +722,13 @@ export default function PreferencesPage() {
 
               <TabsContent value="recommendations" className="space-y-6">
                 <RecommendationSettings
-                  preferences={userPreferences}
+                  preferences={getMergedPreferences()}
                   recommendations={recommendationsData}
                   loading={loading || recommendationsLoading}
-                  onPreferenceChange={handlePreferenceChange}
+                  onPreferenceChange={handleLocalPreferenceChange}
                   onRefreshRecommendations={refetchRecommendations}
+                  isDirty={isDirty}
+                  localChanges={localChanges}
                 />
               </TabsContent>
 

@@ -55,6 +55,17 @@ export default function RecommendationSettings({ preferences, loading, onPrefere
       setRecommendations(data.recommendations || []);
     } catch (error) {
       console.error('Failed to load recommendations:', error);
+
+      // Provide user-friendly fallback for 404 and other errors
+      setRecommendations([]);
+
+      // Show helpful message based on error type
+      if (error.message && error.message.includes('404')) {
+        console.log('ℹ️ Recommendations service temporarily unavailable');
+        // Could add toast notification here if toast is available
+      } else {
+        console.log('ℹ️ Unable to load recommendations at this time');
+      }
     } finally {
       setLoadingRecommendations(false);
     }

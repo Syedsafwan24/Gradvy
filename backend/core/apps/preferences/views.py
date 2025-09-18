@@ -5,6 +5,10 @@ Handles CRUD operations for MongoDB-stored user data.
 from rest_framework import status, views, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
+from utils.responses import (
+    APISuccess, APIError, APIValidationError, PreferencesAPIResponse,
+    StatusCodes, ErrorCodes, handle_exception
+)
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from datetime import datetime, timedelta
@@ -19,6 +23,7 @@ from .serializers import (
     InteractionLogSerializer, CourseRecommendationSerializer,
     UserAnalyticsSerializer
 )
+from .debug_utils import PreferencesDebugger
 from django.conf import settings
 from django.http import JsonResponse
 from django.utils.timezone import now
@@ -39,22 +44,113 @@ class UserPreferenceView(views.APIView):
     def get(self, request):
         """Get current user's preferences"""
         try:
+            # Enhanced debug logging for preferences retrieval
+            logger.info(f"🔍 PREFERENCES GET - User {request.user.id} requesting preferences")
+            logger.debug(f"👤 User details: ID={request.user.id}, email={request.user.email}")
+            logger.debug(f"🔐 User authenticated: {request.user.is_authenticated}")
+
             preference = UserPreference.get_by_user_id(request.user.id)
-            
+
             if not preference:
-                return Response({
-                    'message': 'No preferences found. Please complete onboarding.',
-                    'onboarding_required': True
-                }, status=status.HTTP_404_NOT_FOUND)
-            
+                logger.warning(f"❌ NO PREFERENCES FOUND - User {request.user.id} has no preferences record")
+                return PreferencesAPIResponse.preferences_not_found()
+
+            logger.info(f"✅ PREFERENCES FOUND - User {request.user.id} has preferences record")
+            logger.debug(f"📊 Profile completion: {preference.profile_completion_percentage:.1f}%")
+            logger.debug(f"🏷️  Onboarding status: {preference.onboarding_status}")
+
+            # Verify data availability before serialization
+            logger.debug(f"🔍 VERIFICATION - Basic info exists: {bool(preference.basic_info)}")
+            logger.debug(f"🔍 VERIFICATION - Content prefs exists: {bool(preference.content_preferences)}")
+
+            if preference.basic_info:
+                logger.debug(f"📋 Basic info fields: {len([f for f in ['learning_goals', 'experience_level', 'preferred_pace'] if getattr(preference.basic_info, f, None)])}")
+
+            if preference.content_preferences:
+                logger.debug(f"🎯 Content pref fields: {len([f for f in ['preferred_platforms', 'content_types', 'language_preference'] if getattr(preference.content_preferences, f, None)])}")
+
             serializer = UserPreferenceSerializer(preference)
-            return Response(serializer.data)
-            
+            serialized_data = serializer.data
+
+            # Enhanced format verification for consistency with onboarding response
+            logger.debug(f"🔍 GET RESPONSE FORMAT VERIFICATION:")
+            logger.debug(f"   📊 Response has basic_info: {bool(serialized_data.get('basic_info'))}")
+            logger.debug(f"   📊 Response has content_preferences: {bool(serialized_data.get('content_preferences'))}")
+            logger.debug(f"   📊 Response profile_completion: {serialized_data.get('profile_completion_percentage')}")
+            logger.debug(f"   📦 All response keys: {list(serialized_data.keys())}")
+
+            # Check for missing critical data that would cause frontend issues
+            critical_fields_missing = []
+            if not serialized_data.get('basic_info'):
+                critical_fields_missing.append('basic_info')
+            if not serialized_data.get('content_preferences'):
+                critical_fields_missing.append('content_preferences')
+
+            if critical_fields_missing:
+                logger.warning(f"⚠️  MISSING CRITICAL FIELDS: {critical_fields_missing}")
+                logger.warning(f"   This may cause preferences page to show empty data")
+                logger.warning(f"   User {request.user.id} has incomplete onboarding record")
+                logger.warning(f"   📊 Onboarding status: {preference.onboarding_status}")
+                logger.warning(f"   ✅ Truly complete: {preference.is_onboarding_truly_complete()}")
+
+                # AUTO-MIGRATION: Fix missing content_preferences for existing users
+                if 'content_preferences' in critical_fields_missing and preference.content_preferences is None:
+                    logger.info(f"🔧 AUTO-MIGRATION: Creating missing content_preferences for user {request.user.id}")
+
+                    # Import ContentPreferences model
+                    from .models import ContentPreferences
+
+                    # Create content_preferences with safe defaults
+                    preference.content_preferences = ContentPreferences(
+                        preferred_platforms=[],
+                        content_types=[],
+                        language_preference=['english', 'hindi']
+                    )
+
+                    # Save the migrated data
+                    preference.save()
+                    logger.info(f"✅ AUTO-MIGRATION SUCCESS: Content preferences created for user {request.user.id}")
+
+                    # Re-serialize with the complete data
+                    serializer = UserPreferenceSerializer(preference)
+                    serialized_data = serializer.data
+
+                    # Update critical_fields_missing since we fixed it
+                    critical_fields_missing = []
+                    if not serialized_data.get('basic_info'):
+                        critical_fields_missing.append('basic_info')
+                    if not serialized_data.get('content_preferences'):
+                        critical_fields_missing.append('content_preferences')
+
+                    logger.info(f"🎯 POST-MIGRATION: Critical fields still missing: {critical_fields_missing}")
+
+            # Verify data structure matches what frontend components expect
+            frontend_compatibility_check = {
+                'has_basic_info_structure': bool(serialized_data.get('basic_info')),
+                'has_content_prefs_structure': bool(serialized_data.get('content_preferences')),
+                'has_completion_percentage': 'profile_completion_percentage' in serialized_data,
+                'ready_for_preferences_page': len(critical_fields_missing) == 0
+            }
+
+            logger.debug(f"🔍 FRONTEND COMPATIBILITY CHECK: {frontend_compatibility_check}")
+            logger.info(f"🎉 PREFERENCES SUCCESS - User {request.user.id} preferences retrieved successfully")
+
+            return PreferencesAPIResponse.preferences_retrieved(
+                preferences_data=serialized_data,
+                message="Preferences retrieved successfully"
+            )
+
         except Exception as e:
-            logger.error(f"Error retrieving preferences for user {request.user.id}: {str(e)}")
-            return Response({
-                'error': 'Failed to retrieve preferences'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # Enhanced error logging for debugging preferences retrieval failures
+            logger.error(f"❌ PREFERENCES EXCEPTION - User {request.user.id}: {str(e)}")
+            logger.error(f"🔍 Exception type: {type(e).__name__}")
+            import traceback
+            logger.error(f"📍 Traceback: {traceback.format_exc()}")
+
+            return handle_exception(
+                exception=e,
+                default_message='Failed to retrieve preferences'
+            )
     
     def post(self, request):
         """Create initial preferences (usually from onboarding)"""
@@ -62,10 +158,11 @@ class UserPreferenceView(views.APIView):
             # Check if user already has preferences
             existing = UserPreference.get_by_user_id(request.user.id)
             if existing:
-                return Response({
-                    'error': 'User preferences already exist. Use PUT to update.',
-                    'existing_data': UserPreferenceSerializer(existing).data
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return APIError.conflict(
+                    message='User preferences already exist. Use PUT to update.',
+                    code=ErrorCodes.RESOURCE_CONFLICT,
+                    details={'existing_data': UserPreferenceSerializer(existing).data}
+                )
             
             serializer = UserPreferenceSerializer(
                 data=request.data,
@@ -78,18 +175,19 @@ class UserPreferenceView(views.APIView):
                 # Log preference creation
                 logger.info(f"Created preferences for user {request.user.id}")
                 
-                return Response(
-                    UserPreferenceSerializer(preference).data,
-                    status=status.HTTP_201_CREATED
+                return APISuccess.created(
+                    data=UserPreferenceSerializer(preference).data,
+                    message='Preferences created successfully'
                 )
             
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return APIValidationError.create_from_serializer(serializer)
             
         except Exception as e:
             logger.error(f"Error creating preferences for user {request.user.id}: {str(e)}")
-            return Response({
-                'error': 'Failed to create preferences'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='Failed to create preferences'
+            )
     
     def put(self, request):
         """Update user preferences (full update)"""
@@ -102,12 +200,17 @@ class UserPreferenceView(views.APIView):
     def _update_preferences(self, request, partial=False):
         """Common logic for PUT/PATCH operations"""
         try:
+            # Debug logging for manual save investigation
+            logger.info(f"🔍 Preferences update request from user {request.user.id}")
+            logger.info(f"📥 Request method: {request.method}")
+            logger.info(f"📋 Partial update: {partial}")
+            logger.info(f"📦 Request data: {request.data}")
+            logger.info(f"📐 Data size: {len(str(request.data))} characters")
+
             preference = UserPreference.get_by_user_id(request.user.id)
             
             if not preference:
-                return Response({
-                    'error': 'No preferences found. Use POST to create initial preferences.'
-                }, status=status.HTTP_404_NOT_FOUND)
+                return PreferencesAPIResponse.preferences_not_found()
             
             serializer = UserPreferenceSerializer(
                 preference,
@@ -118,13 +221,24 @@ class UserPreferenceView(views.APIView):
             
             if serializer.is_valid():
                 updated_preference = serializer.save()
-                
+
+                # Ensure completion percentage is updated (safety net)
+                updated_preference.update_completion_percentage()
+
                 # Log preference update
-                logger.info(f"Updated preferences for user {request.user.id}")
-                
-                return Response(UserPreferenceSerializer(updated_preference).data)
-            
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                logger.info(f"✅ Updated preferences for user {request.user.id}")
+
+                return PreferencesAPIResponse.preferences_updated(
+                    preferences_data=UserPreferenceSerializer(updated_preference).data,
+                    message='Preferences updated successfully'
+                )
+
+            # Debug: Log validation errors in detail
+            logger.error(f"❌ Serializer validation failed for user {request.user.id}")
+            logger.error(f"🔍 Validation errors: {serializer.errors}")
+            logger.error(f"📋 Request data that failed validation: {request.data}")
+
+            return APIValidationError.create_from_serializer(serializer)
             
         except Exception as e:
             # Enhanced error handling for MongoDB validation failures
@@ -140,62 +254,121 @@ class UserPreferenceView(views.APIView):
             if 'Document failed validation' in error_message:
                 # Parse MongoDB validation error for user-friendly message
                 user_friendly_error = self._parse_mongodb_validation_error(error_message)
-                return Response({
-                    'error': 'Validation Error',
-                    'message': user_friendly_error,
-                    'details': 'Some of your preferences contain invalid values. Please check your selections.',
-                    'error_type': 'validation_error'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return PreferencesAPIResponse.mongodb_validation_error(e)
 
             # Check for other common MongoDB errors
             elif 'Could not save document' in error_message:
-                return Response({
-                    'error': 'Save Error',
-                    'message': 'Unable to save your preferences due to data validation issues.',
-                    'details': 'Please check that all your selections are from the available options.',
-                    'error_type': 'save_error'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return APIError.bad_request(
+                    message='Unable to save your preferences due to data validation issues.',
+                    code=ErrorCodes.VALIDATION_ERROR,
+                    details={'advice': 'Please check that all your selections are from the available options.'}
+                )
 
             # Generic error fallback
-            return Response({
-                'error': 'Failed to update preferences',
-                'message': 'An unexpected error occurred while updating your preferences.',
-                'error_type': 'internal_error'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='An unexpected error occurred while updating your preferences.'
+            )
 
     def _parse_mongodb_validation_error(self, error_message):
         """
         Parse MongoDB validation error message to provide user-friendly feedback
         """
         try:
-            # Common validation error patterns
-            if 'preferred_platforms' in error_message:
-                if 'freecodecamp' in error_message:
-                    return "The platform 'FreeCodeCamp' is not currently supported. Please choose from the available learning platforms."
-                elif 'enum' in error_message and 'consideredValue' in error_message:
-                    # Extract the invalid value from the error
-                    import re
-                    match = re.search(r"'consideredValue': '([^']+)'", error_message)
+            import re
+
+            # Extract invalid value from error message if present
+            def extract_invalid_value():
+                patterns = [
+                    r"'consideredValue': '([^']+)'",
+                    r'"consideredValue": "([^"]+)"',
+                    r'value "([^"]+)" not in',
+                    r"'([^']+)' is not valid"
+                ]
+                for pattern in patterns:
+                    match = re.search(pattern, error_message)
                     if match:
-                        invalid_value = match.group(1)
-                        return f"The platform '{invalid_value}' is not currently supported. Please choose from the available learning platforms."
-                    return "One or more selected learning platforms are not currently supported."
-                return "Invalid learning platform selection. Please choose from the available options."
+                        return match.group(1)
+                return None
+
+            invalid_value = extract_invalid_value()
+
+            # Field-specific validation errors
+            if 'learning_goals' in error_message:
+                return f"Invalid learning goal{f': {invalid_value}' if invalid_value else ''}. Please select from the available options."
+
+            elif 'experience_level' in error_message:
+                return f"Invalid experience level{f': {invalid_value}' if invalid_value else ''}. Please choose from: Complete Beginner, Some Basics, Intermediate, or Advanced."
+
+            elif 'preferred_pace' in error_message:
+                return f"Invalid learning pace{f': {invalid_value}' if invalid_value else ''}. Please choose from: Slow, Medium, or Fast."
+
+            elif 'time_availability' in error_message:
+                return f"Invalid time availability{f': {invalid_value}' if invalid_value else ''}. Please choose from: 1-2hrs, 3-5hrs, or 5+hrs per week."
+
+            elif 'learning_style' in error_message:
+                return f"Invalid learning style{f': {invalid_value}' if invalid_value else ''}. Please choose from: Visual, Hands-on, Reading, Videos, or Interactive."
+
+            elif 'career_stage' in error_message:
+                return f"Invalid career stage{f': {invalid_value}' if invalid_value else ''}. Please choose from: Student, Career Change, Skill Upgrade, or Professional."
+
+            elif 'target_timeline' in error_message:
+                return f"Invalid timeline{f': {invalid_value}' if invalid_value else ''}. Please choose from: 3 months, 6 months, 1 year, or Flexible."
+
+            elif 'preferred_platforms' in error_message:
+                if invalid_value:
+                    # Provide specific messages for commonly selected unsupported platforms
+                    platform_messages = {
+                        'freecodecamp': "FreeCodeCamp is temporarily unavailable while we update our platform support. Please select from our currently available platforms: Udemy, Coursera, YouTube, edX, Khan Academy, Pluralsight, or LinkedIn Learning.",
+                        'codecademy': "Codecademy is temporarily unavailable while we update our platform support. Please select from our currently available platforms.",
+                        'skillshare': "Skillshare is temporarily unavailable while we update our platform support. Please select from our currently available platforms.",
+                        'masterclass': "MasterClass is temporarily unavailable while we update our platform support. Please select from our currently available platforms.",
+                        'brilliant': "Brilliant is temporarily unavailable while we update our platform support. Please select from our currently available platforms.",
+                        'datacamp': "DataCamp is temporarily unavailable while we update our platform support. Please select from our currently available platforms.",
+                        'udacity': "Udacity is temporarily unavailable while we update our platform support. Please select from our currently available platforms.",
+                    }
+
+                    if invalid_value.lower() in platform_messages:
+                        return platform_messages[invalid_value.lower()]
+                    else:
+                        return f"The platform '{invalid_value}' is temporarily unavailable while we update our platform support. Please select from our currently available platforms: Udemy, Coursera, YouTube, edX, Khan Academy, Pluralsight, or LinkedIn Learning."
+                return "Some selected learning platforms are temporarily unavailable. Please choose from our currently supported platforms: Udemy, Coursera, YouTube, edX, Khan Academy, Pluralsight, or LinkedIn Learning."
 
             elif 'content_types' in error_message:
-                return "Invalid content type selection. Please choose from the available content types."
+                return f"Invalid content type{f': {invalid_value}' if invalid_value else ''}. Please choose from: Video, Article, Interactive, Quiz, Project, Book, or Podcast."
 
             elif 'difficulty_preference' in error_message:
-                return "Invalid difficulty level selection. Please choose from: Beginner, Intermediate, Advanced, or Mixed."
+                return f"Invalid difficulty level{f': {invalid_value}' if invalid_value else ''}. Please choose from: Beginner, Intermediate, Advanced, or Mixed."
 
             elif 'duration_preference' in error_message:
-                return "Invalid duration preference selection. Please choose from: Short, Medium, Long, or Mixed."
+                return f"Invalid duration preference{f': {invalid_value}' if invalid_value else ''}. Please choose from: Short, Medium, Long, or Mixed."
 
-            # Generic fallback
-            return "Some of your selections are invalid. Please review your choices and try again."
+            elif 'language_preference' in error_message:
+                return f"Invalid language preference{f': {invalid_value}' if invalid_value else ''}. Please enter valid language codes."
 
-        except Exception:
-            # If parsing fails, return generic message
+            elif 'instructor_ratings_min' in error_message:
+                return "Invalid instructor rating minimum. Please enter a value between 0.0 and 5.0."
+
+            # MongoDB-specific error patterns
+            elif 'ValidationError' in error_message or 'Document failed validation' in error_message:
+                # Try to extract field name from validation error
+                field_match = re.search(r"ValidationError \(([^)]+)\)", error_message)
+                if field_match:
+                    field_name = field_match.group(1)
+                    return f"Validation error in field '{field_name}'. Please check your input and try again."
+                return "Document validation failed. Please check all your inputs and try again."
+
+            elif 'required' in error_message.lower():
+                return "Some required fields are missing. Please fill in all required information."
+
+            elif 'unique' in error_message.lower():
+                return "This data conflicts with existing records. Please check your input."
+
+            # Generic fallback with more helpful message
+            return "Some of your selections contain invalid values. Please review your choices and ensure they match the available options."
+
+        except Exception as e:
+            logger.error(f"Error parsing MongoDB validation error: {str(e)}")
             return "Invalid data detected. Please check your selections and try again."
 
 
@@ -210,39 +383,136 @@ class OnboardingView(views.APIView):
     def post(self, request):
         """Complete onboarding and create user preferences"""
         try:
-            # Check if user already completed onboarding
+            # Enhanced debug logging for onboarding submission
+            logger.info(f"🎯 ONBOARDING START - User {request.user.id} submitting onboarding data")
+            logger.debug(f"📦 Request data keys: {list(request.data.keys())}")
+            logger.debug(f"📋 Request data sample: {dict(list(request.data.items())[:5])}")
+            logger.debug(f"🔐 User authenticated: {request.user.is_authenticated}")
+            logger.debug(f"👤 User details: ID={request.user.id}, email={request.user.email}")
+
+            # Check if user already completed onboarding with all required data
             existing = UserPreference.get_by_user_id(request.user.id)
             if existing:
-                return Response({
-                    'message': 'Onboarding already completed',
-                    'preferences': UserPreferenceSerializer(existing).data
-                }, status=status.HTTP_200_OK)
+                # Use the new method to check if onboarding is truly complete
+                is_truly_complete = existing.is_onboarding_truly_complete()
+
+                if is_truly_complete:
+                    logger.warning(f"⚠️  User {request.user.id} has complete preferences - onboarding already finished")
+                    return APISuccess.create(
+                        data=UserPreferenceSerializer(existing).data,
+                        message='Onboarding already completed'
+                    )
+                else:
+                    # User has incomplete preferences - log details and allow re-completion
+                    missing_fields = []
+                    if existing.basic_info is None:
+                        missing_fields.append('basic_info')
+                    if existing.onboarding_status == 'full_completed' and existing.content_preferences is None:
+                        missing_fields.append('content_preferences')
+
+                    logger.info(f"🔄 User {request.user.id} has incomplete preferences - missing {missing_fields}")
+                    logger.info(f"📊 Current status: {existing.onboarding_status}, allowing re-completion")
+                    logger.info(f"🎯 Completion status: basic_info={existing.basic_info is not None}, content_preferences={existing.content_preferences is not None}")
+
+                    # Continue with onboarding to fill in missing data
+                    # The serializer will update the existing record
             
             serializer = OnboardingSerializer(
                 data=request.data,
                 context={'request': request}
             )
-            
+
+            logger.debug(f"🔍 Validating onboarding data for user {request.user.id}")
             if serializer.is_valid():
+                logger.info(f"✅ Onboarding validation passed for user {request.user.id}")
+                logger.debug(f"📋 Validated data fields: {list(serializer.validated_data.keys())}")
+
+                # Log data distribution
+                basic_info_fields = ['learning_goals', 'experience_level', 'preferred_pace', 'time_availability', 'learning_style', 'career_stage', 'target_timeline']
+                content_fields = ['preferred_platforms', 'content_types', 'language_preference']
+
+                basic_count = sum(1 for field in basic_info_fields if serializer.validated_data.get(field))
+                content_count = sum(1 for field in content_fields if serializer.validated_data.get(field))
+                logger.debug(f"📊 Data distribution - Basic info: {basic_count}/{len(basic_info_fields)}, Content: {content_count}/{len(content_fields)}")
+
+                logger.info(f"💾 Starting preference creation for user {request.user.id}")
                 preference = serializer.save()
-                
-                logger.info(f"Completed onboarding for user {request.user.id}")
-                
-                return Response({
-                    'message': 'Onboarding completed successfully',
-                    'preferences': UserPreferenceSerializer(preference).data
-                }, status=status.HTTP_201_CREATED)
-            
-            return Response({
-                'message': 'Onboarding data validation failed',
-                'errors': serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
+                logger.info(f"✅ Preference created successfully for user {request.user.id}")
+
+                logger.info(f"✅ Completed onboarding for user {request.user.id}")
+                logger.debug(f"📊 Pre-refresh completion: {preference.profile_completion_percentage:.1f}%")
+
+                # Refresh object from database to ensure latest state
+                preference.reload()
+                logger.debug(f"🔄 Post-refresh completion: {preference.profile_completion_percentage:.1f}%")
+
+                # Use the standard serializer for consistent data format
+                serialized_data = UserPreferenceSerializer(preference).data
+                logger.debug(f"📤 Response completion: {serialized_data.get('profile_completion_percentage', 'N/A')}%")
+
+                # Enhanced verification of data structure consistency
+                logger.debug(f"🔍 RESPONSE FORMAT VERIFICATION:")
+                logger.debug(f"   📊 Response has basic_info: {bool(serialized_data.get('basic_info'))}")
+                logger.debug(f"   📊 Response has content_preferences: {bool(serialized_data.get('content_preferences'))}")
+                logger.debug(f"   📊 Response profile_completion: {serialized_data.get('profile_completion_percentage')}")
+
+                if serialized_data.get('basic_info'):
+                    basic_info_keys = list(serialized_data['basic_info'].keys())
+                    logger.debug(f"   📋 Basic info fields: {basic_info_keys}")
+                    logger.debug(f"   🎯 Learning goals count: {len(serialized_data['basic_info'].get('learning_goals', []))}")
+
+                if serialized_data.get('content_preferences'):
+                    content_keys = list(serialized_data['content_preferences'].keys())
+                    logger.debug(f"   🎯 Content pref fields: {content_keys}")
+
+                # Verify data consistency with what frontend expects
+                expected_format_valid = (
+                    'basic_info' in serialized_data and
+                    'content_preferences' in serialized_data and
+                    'profile_completion_percentage' in serialized_data
+                )
+                logger.debug(f"🔍 FRONTEND COMPATIBILITY - Expected format valid: {expected_format_valid}")
+
+                # Create response data
+                response_data = {
+                    'preferences': serialized_data,
+                    'profile_completion_percentage': preference.profile_completion_percentage,
+                    'onboarding_status': preference.onboarding_status,
+                    # Add cache invalidation metadata for frontend
+                    'cache_invalidation': {
+                        'timestamp': preference.updated_at.isoformat(),
+                        'user_id': request.user.id,
+                        'requires_refresh': True
+                    }
+                }
+
+                logger.info(f"🎉 ONBOARDING SUCCESS - User {request.user.id} onboarding completed with {preference.profile_completion_percentage:.1f}% completion")
+                logger.debug(f"📤 Final response data keys: {list(response_data.keys())}")
+                return PreferencesAPIResponse.onboarding_completed(
+                    preferences_data=response_data,
+                    completion_percentage=preference.profile_completion_percentage,
+                    message='Onboarding completed successfully'
+                )
+            else:
+                # Validation failed - detailed error logging
+                logger.error(f"❌ ONBOARDING VALIDATION FAILED - User {request.user.id}")
+                logger.error(f"🔍 Validation errors: {serializer.errors}")
+                logger.error(f"📋 Failed fields: {list(serializer.errors.keys())}")
+
+                return APIValidationError.create_from_serializer(serializer)
             
         except Exception as e:
-            logger.error(f"Error during onboarding for user {request.user.id}: {str(e)}")
-            return Response({
-                'error': 'Failed to complete onboarding'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # Enhanced error logging for debugging onboarding failures
+            logger.error(f"❌ ONBOARDING EXCEPTION - User {request.user.id}: {str(e)}")
+            logger.error(f"🔍 Exception type: {type(e).__name__}")
+            logger.error(f"📋 Exception args: {e.args}")
+            import traceback
+            logger.error(f"📍 Traceback: {traceback.format_exc()}")
+
+            return handle_exception(
+                exception=e,
+                default_message='Failed to complete onboarding'
+            )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -287,7 +557,19 @@ class QuickOnboardingView(views.APIView):
                 preference.basic_info.learning_style = basic_info_data['learning_style']
             if basic_info_data.get('preferred_pace'):
                 preference.basic_info.preferred_pace = basic_info_data['preferred_pace']
-            
+
+            # CRITICAL: Always create content_preferences for quick onboarding
+            # This ensures preferences page works correctly for all users
+            from .models import ContentPreferences
+            if not preference.content_preferences:
+                logger.info(f"🔧 Creating content_preferences for quick onboarding user {request.user.id}")
+                preference.content_preferences = ContentPreferences(
+                    preferred_platforms=[],
+                    content_types=[],
+                    language_preference=['english', 'hindi']
+                )
+                logger.info(f"✅ Content preferences created for quick onboarding user {request.user.id}")
+
             # Update profile completion percentage
             preference.update_completion_percentage()
             
@@ -309,33 +591,29 @@ class QuickOnboardingView(views.APIView):
                 }
             )
             
-            logger.info(f"Completed quick onboarding for user {request.user.id}")
-            
-            return Response({
-                'message': 'Quick onboarding completed successfully',
-                'profile_completion_percentage': preference.profile_completion_percentage,
-                'onboarding_status': preference.onboarding_status,
-                'quick_onboarding_completed': preference.quick_onboarding_completed,  # Compatibility
-                'onboarding_completed': preference.onboarding_completed,  # Compatibility
-                'user_id': preference.user_id,
-                'basic_info': {
-                    'learning_goals': preference.basic_info.learning_goals if preference.basic_info else [],
-                    'experience_level': preference.basic_info.experience_level if preference.basic_info else '',
-                    'time_availability': preference.basic_info.time_availability if preference.basic_info else '',
-                    'learning_style': preference.basic_info.learning_style if preference.basic_info else [],
-                    'preferred_pace': preference.basic_info.preferred_pace if preference.basic_info else ''
+            logger.info(f"✅ Completed quick onboarding for user {request.user.id}")
+            logger.info(f"📊 Final completion status: truly_complete={preference.is_onboarding_truly_complete()}")
+            logger.info(f"🎯 Data completeness: basic_info={preference.basic_info is not None}, content_preferences={preference.content_preferences is not None}")
+            logger.info(f"📈 Profile completion: {preference.profile_completion_percentage}%")
+
+            # Use the standard serializer for consistent data format
+            serialized_data = UserPreferenceSerializer(preference).data
+
+            return APISuccess.created(
+                data={
+                    'preferences': serialized_data,
+                    'profile_completion_percentage': preference.profile_completion_percentage,
+                    'onboarding_status': preference.onboarding_status
                 },
-                'quick_onboarding_data': preference.quick_onboarding_data,
-                'created_at': preference.created_at.isoformat() if preference.created_at else None,
-                'updated_at': preference.updated_at.isoformat() if preference.updated_at else None
-            }, status=status.HTTP_201_CREATED)
+                message='Quick onboarding completed successfully'
+            )
             
         except Exception as e:
             logger.error(f"Error during quick onboarding for user {request.user.id}: {str(e)}")
-            return Response({
-                'error': 'Failed to complete quick onboarding',
-                'details': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='Failed to complete quick onboarding'
+            )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -356,15 +634,19 @@ class InteractionLogView(views.APIView):
             
             if serializer.is_valid():
                 result = serializer.save()
-                return Response(result, status=status.HTTP_201_CREATED)
-            
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                return APISuccess.created(
+                    data=result,
+                    message='Interaction logged successfully'
+                )
+
+            return APIValidationError.create_from_serializer(serializer)
             
         except Exception as e:
             logger.error(f"Error logging interaction for user {request.user.id}: {str(e)}")
-            return Response({
-                'error': 'Failed to log interaction'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='Failed to log interaction'
+            )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -382,16 +664,20 @@ class UserAnalyticsView(views.APIView):
             
             serializer = UserAnalyticsSerializer(preference)
             
-            return Response({
-                'analytics': serializer.data,
-                'generated_at': datetime.utcnow().isoformat()
-            })
+            return APISuccess.create(
+                data={
+                    'analytics': serializer.data,
+                    'generated_at': datetime.utcnow().isoformat()
+                },
+                message='Analytics retrieved successfully'
+            )
             
         except Exception as e:
             logger.error(f"Error generating analytics for user {request.user.id}: {str(e)}")
-            return Response({
-                'error': 'Failed to generate analytics'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='Failed to generate analytics'
+            )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -405,33 +691,45 @@ class PersonalizedRecommendationsView(views.APIView):
     def get(self, request):
         """Get personalized course recommendations"""
         try:
+            # Debug logging for 404 troubleshooting
+            logger.info(f"🔍 RECOMMENDATIONS DEBUG: User {request.user.id} accessing recommendations")
+            logger.info(f"🔍 Request path: {request.path}")
+            logger.info(f"🔍 Request method: {request.method}")
+            logger.info(f"🔍 User authenticated: {request.user.is_authenticated}")
+
             # Check for valid cached recommendations
             recommendations = CourseRecommendation.get_valid_recommendations(request.user.id)
             
             if recommendations:
                 serializer = CourseRecommendationSerializer(recommendations)
-                return Response({
-                    'recommendations': serializer.data,
-                    'source': 'cached'
-                })
+                return APISuccess.create(
+                    data={
+                        'recommendations': serializer.data,
+                        'source': 'cached'
+                    },
+                    message='Recommendations retrieved successfully'
+                )
             
             # No valid recommendations found
-            return Response({
-                'message': 'No recommendations available. Recommendations will be generated based on your preferences.',
-                'recommendations': {
-                    'user_id': request.user.id,
-                    'recommendations': [],
-                    'generated_at': None,
-                    'expires_at': None
+            return APISuccess.create(
+                data={
+                    'recommendations': {
+                        'user_id': request.user.id,
+                        'recommendations': [],
+                        'generated_at': None,
+                        'expires_at': None
+                    },
+                    'source': 'none'
                 },
-                'source': 'none'
-            }, status=status.HTTP_200_OK)
+                message='No recommendations available. Recommendations will be generated based on your preferences.'
+            )
             
         except Exception as e:
             logger.error(f"Error retrieving recommendations for user {request.user.id}: {str(e)}")
-            return Response({
-                'error': 'Failed to retrieve recommendations'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='Failed to retrieve recommendations'
+            )
     
     def post(self, request):
         """Force regeneration of recommendations (for testing)"""
@@ -441,9 +739,7 @@ class PersonalizedRecommendationsView(views.APIView):
             
             user_preference = UserPreference.get_by_user_id(request.user.id)
             if not user_preference:
-                return Response({
-                    'error': 'User preferences not found. Complete onboarding first.'
-                }, status=status.HTTP_404_NOT_FOUND)
+                return PreferencesAPIResponse.preferences_not_found()
             
             # Create mock recommendations for testing
             mock_recommendations = [
@@ -475,17 +771,20 @@ class PersonalizedRecommendationsView(views.APIView):
             recommendation.save()
             
             serializer = CourseRecommendationSerializer(recommendation)
-            return Response({
-                'message': 'Recommendations generated successfully',
-                'recommendations': serializer.data,
-                'source': 'generated'
-            }, status=status.HTTP_201_CREATED)
+            return APISuccess.created(
+                data={
+                    'recommendations': serializer.data,
+                    'source': 'generated'
+                },
+                message='Recommendations generated successfully'
+            )
             
         except Exception as e:
             logger.error(f"Error generating recommendations for user {request.user.id}: {str(e)}")
-            return Response({
-                'error': 'Failed to generate recommendations'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='Failed to generate recommendations'
+            )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -518,7 +817,10 @@ class PreferenceChoicesView(views.APIView):
             'interaction_types': InteractionData.INTERACTION_TYPES
         }
         
-        return Response(choices)
+        return APISuccess.create(
+            data=choices,
+            message='Preference choices retrieved successfully'
+        )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -558,18 +860,17 @@ class OnboardingProgressView(views.APIView):
             pref.custom_preferences['onboarding_progress'] = progress
             pref.save()
 
-            return Response({
-                'success': True,
-                'message': 'Progress saved successfully',
-                'onboarding_progress': progress
-            }, status=status.HTTP_200_OK)
+            return APISuccess.create(
+                data={'onboarding_progress': progress},
+                message='Progress saved successfully'
+            )
 
         except Exception as e:
             logger.error(f"Error saving onboarding progress for user {request.user.id}: {str(e)}")
-            return Response({
-                'message': 'Failed to save onboarding progress',
-                'error': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='Failed to save onboarding progress'
+            )
 
 
 # =============================================================================
@@ -601,10 +902,13 @@ class PrivacyConsentSummaryView(views.APIView):
             })
 
         summary = pref.get_privacy_summary()
-        return Response({
-            'privacy_summary': summary,
-            'consent_records': records,
-        })
+        return APISuccess.create(
+            data={
+                'privacy_summary': summary,
+                'consent_records': records
+            },
+            message='Privacy consent summary retrieved successfully'
+        )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -615,11 +919,15 @@ class PrivacyConsentUpdateView(views.APIView):
         """Update a specific consent (by record_id or consent_type)"""
         granted = request.data.get('granted', None)
         if granted is None:
-            return Response({'error': 'granted is required'}, status=status.HTTP_400_BAD_REQUEST)
+            return APIError.bad_request(
+                message='granted parameter is required',
+                code=ErrorCodes.REQUIRED_FIELD_MISSING,
+                field_errors={'granted': ['This field is required']}
+            )
 
         pref = UserPreference.get_by_user_id(request.user.id)
         if not pref:
-            return Response({'error': 'User preferences not found'}, status=status.HTTP_404_NOT_FOUND)
+            return PreferencesAPIResponse.preferences_not_found()
 
         # Resolve consent type
         ctype = None
@@ -647,17 +955,20 @@ class PrivacyConsentUpdateView(views.APIView):
                 latest = rec
                 break
 
-        return Response({
-            'consent': {
-                'id': getattr(latest, 'record_id', None),
-                'consent_type': latest.consent_type,
-                'consent_types': latest.consent_types,
-                'granted': latest.granted,
-                'granted_at': latest.granted_at.isoformat() if latest.granted_at else None,
-                'updated_at': latest.updated_at.isoformat() if latest.updated_at else None,
+        return APISuccess.create(
+            data={
+                'consent': {
+                    'id': getattr(latest, 'record_id', None),
+                    'consent_type': latest.consent_type,
+                    'consent_types': latest.consent_types,
+                    'granted': latest.granted,
+                    'granted_at': latest.granted_at.isoformat() if latest.granted_at else None,
+                    'updated_at': latest.updated_at.isoformat() if latest.updated_at else None,
+                },
+                'privacy_data': pref.get_privacy_summary()
             },
-            'privacy_data': pref.get_privacy_summary()
-        })
+            message='Consent updated successfully'
+        )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -667,7 +978,7 @@ class RevokeAllConsentsView(views.APIView):
     def post(self, request):
         pref = UserPreference.get_by_user_id(request.user.id)
         if not pref:
-            return Response({'error': 'User preferences not found'}, status=status.HTTP_404_NOT_FOUND)
+            return PreferencesAPIResponse.preferences_not_found()
 
         # Revoke all non-essential consents
         revoke_types = [
@@ -682,19 +993,21 @@ class RevokeAllConsentsView(views.APIView):
                 user_agent=request.META.get('HTTP_USER_AGENT', '')
             )
 
-        return Response({
-            'status': 'success',
-            'privacy_data': pref.get_privacy_summary(),
-            'consent_records': [
-                {
-                    'id': rec.record_id,
-                    'consent_type': rec.consent_type,
-                    'consent_types': rec.consent_types,
-                    'granted': rec.granted,
-                    'updated_at': rec.updated_at.isoformat() if rec.updated_at else None,
-                } for rec in pref.consent_history
-            ]
-        })
+        return APISuccess.create(
+            data={
+                'privacy_data': pref.get_privacy_summary(),
+                'consent_records': [
+                    {
+                        'id': rec.record_id,
+                        'consent_type': rec.consent_type,
+                        'consent_types': rec.consent_types,
+                        'granted': rec.granted,
+                        'updated_at': rec.updated_at.isoformat() if rec.updated_at else None,
+                    } for rec in pref.consent_history
+                ]
+            },
+            message='All consents revoked successfully'
+        )
 
 
 @api_view(['GET'])
@@ -703,7 +1016,10 @@ def consent_history_download(request):
     """Download consent history as JSON attachment"""
     pref = UserPreference.get_by_user_id(request.user.id)
     if not pref:
-        return Response({'error': 'User preferences not found'}, status=404)
+        return APIError.not_found(
+            message='User preferences not found',
+            code=ErrorCodes.RESOURCE_NOT_FOUND
+        )
 
     payload = [
         {
@@ -728,12 +1044,15 @@ def privacy_versions(request):
     privacy_version = getattr(settings, 'PRIVACY_POLICY_VERSION', '1.0')
     terms_version = getattr(settings, 'TERMS_VERSION', '1.0')
     cookie_version = getattr(settings, 'COOKIE_POLICY_VERSION', '1.0')
-    return Response({
-        'privacy_policy_version': privacy_version,
-        'terms_version': terms_version,
-        'cookie_policy_version': cookie_version,
-        'last_updated': now().isoformat()
-    })
+    return APISuccess.create(
+        data={
+            'privacy_policy_version': privacy_version,
+            'terms_version': terms_version,
+            'cookie_policy_version': cookie_version,
+            'last_updated': now().isoformat()
+        },
+        message='Privacy policy versions retrieved successfully'
+    )
 
 
 @api_view(['POST'])
@@ -742,7 +1061,11 @@ def privacy_accept(request):
     policy = request.data.get('policy')  # 'privacy' | 'terms' | 'cookie'
     version = request.data.get('version')
     if not policy or not version:
-        return Response({'error': 'policy and version are required'}, status=400)
+        return APIError.bad_request(
+            message='Policy and version are required',
+            code=ErrorCodes.REQUIRED_FIELD_MISSING,
+            field_errors={'policy': ['This field is required'], 'version': ['This field is required']}
+        )
 
     pref = UserPreference.get_by_user_id(request.user.id)
     if not pref:
@@ -761,12 +1084,22 @@ def privacy_accept(request):
         # Track via consent record for transparency
         pref.record_consent_change('analytics', True)
     else:
-        return Response({'error': 'invalid policy'}, status=400)
+        return APIError.bad_request(
+            message='Invalid policy type. Must be privacy, terms, or cookie',
+            code=ErrorCodes.INVALID_INPUT_FORMAT,
+            field_errors={'policy': ['Must be one of: privacy, terms, cookie']}
+        )
 
     pref.privacy_settings.last_updated = datetime.utcnow()
     pref.save()
 
-    return Response({'status': 'accepted', 'privacy_settings': pref.get_privacy_summary()})
+    return APISuccess.create(
+        data={
+            'status': 'accepted',
+            'privacy_settings': pref.get_privacy_summary()
+        },
+        message='Privacy policy accepted successfully'
+    )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -785,7 +1118,11 @@ class AnalyticsEventAPIView(views.APIView):
             events = data.get('events', [])
             
             if not events:
-                return Response({'error': 'No events provided'}, status=status.HTTP_400_BAD_REQUEST)
+                return APIError.bad_request(
+                    message='No events provided',
+                    code=ErrorCodes.REQUIRED_FIELD_MISSING,
+                    field_errors={'events': ['At least one event is required']}
+                )
             
             # Get or create user preference record
             user_preference, created = self._get_or_create_user_preference(request.user)
@@ -809,18 +1146,20 @@ class AnalyticsEventAPIView(views.APIView):
             
             logger.info(f"Processed {len(processed_events)} events for user {request.user.id}")
             
-            return Response({
-                'processed_events': len(processed_events),
-                'total_events': len(events),
-                'privacy_level': self._get_privacy_level(user_preference),
-                'status': 'success'
-            })
+            return APISuccess.created(
+                data={
+                    'processed_events': len(processed_events),
+                    'total_events': len(events),
+                    'privacy_level': self._get_privacy_level(user_preference)
+                },
+                message='Analytics events processed successfully'
+            )
             
         except Exception as e:
             logger.error(f"Failed to process analytics events: {str(e)}")
-            return Response(
-                {'error': 'Failed to process events', 'details': str(e)}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            return handle_exception(
+                exception=e,
+                default_message='Failed to process analytics events'
             )
     
     def _get_or_create_user_preference(self, user):
@@ -1057,7 +1396,11 @@ class PrivacyConsentAPIView(views.APIView):
             consent_types = request.data.get('consent_types', [])
             
             if not consent_types:
-                return Response({'error': 'No consent types provided'}, status=status.HTTP_400_BAD_REQUEST)
+                return APIError.bad_request(
+                    message='No consent types provided',
+                    code=ErrorCodes.REQUIRED_FIELD_MISSING,
+                    field_errors={'consent_types': ['At least one consent type is required']}
+                )
             
             # Get user preference
             user_preference = UserPreference.get_by_user_id(request.user.id)
@@ -1071,17 +1414,19 @@ class PrivacyConsentAPIView(views.APIView):
                 user_agent=request.META.get('HTTP_USER_AGENT')
             )
             
-            return Response({
-                'status': 'success',
-                'privacy_settings': user_preference.get_privacy_summary(),
-                'consent_recorded': consent_types,
-            })
+            return APISuccess.created(
+                data={
+                    'privacy_settings': user_preference.get_privacy_summary(),
+                    'consent_recorded': consent_types
+                },
+                message='Privacy consent recorded successfully'
+            )
             
         except Exception as e:
             logger.error(f"Failed to record privacy consent: {str(e)}")
-            return Response(
-                {'error': 'Failed to record consent', 'details': str(e)}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            return handle_exception(
+                exception=e,
+                default_message='Failed to record privacy consent'
             )
     
     def get(self, request):
@@ -1090,21 +1435,27 @@ class PrivacyConsentAPIView(views.APIView):
             user_preference = UserPreference.get_by_user_id(request.user.id)
             
             if not user_preference:
-                return Response({
-                    'privacy_configured': False,
-                    'available_consent_types': [
-                        'essential', 'analytics', 'personalization', 'marketing',
-                        'social_integration', 'behavioral_analysis', 'external_enrichment'
-                    ]
-                })
+                return APISuccess.create(
+                    data={
+                        'privacy_configured': False,
+                        'available_consent_types': [
+                            'essential', 'analytics', 'personalization', 'marketing',
+                            'social_integration', 'behavioral_analysis', 'external_enrichment'
+                        ]
+                    },
+                    message='Privacy settings retrieved successfully'
+                )
             
-            return Response(user_preference.get_privacy_summary())
+            return APISuccess.create(
+                data=user_preference.get_privacy_summary(),
+                message='Privacy settings retrieved successfully'
+            )
             
         except Exception as e:
             logger.error(f"Failed to get privacy settings: {str(e)}")
-            return Response(
-                {'error': 'Failed to get privacy settings'}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            return handle_exception(
+                exception=e,
+                default_message='Failed to get privacy settings'
             )
     
     def _get_client_ip(self, request):
@@ -1131,7 +1482,7 @@ class EnhancedUserAnalyticsView(views.APIView):
             user_preference = UserPreference.get_by_user_id(request.user.id)
             
             if not user_preference:
-                return Response({'error': 'User preferences not found'}, status=status.HTTP_404_NOT_FOUND)
+                return PreferencesAPIResponse.preferences_not_found()
             
             # Get analytics data
             analytics_data = {
@@ -1157,13 +1508,16 @@ class EnhancedUserAnalyticsView(views.APIView):
                     'last_updated': user_preference.ai_insights.updated_at,
                 }
             
-            return Response(analytics_data)
+            return APISuccess.create(
+                data=analytics_data,
+                message='Enhanced analytics retrieved successfully'
+            )
             
         except Exception as e:
             logger.error(f"Failed to get user analytics: {str(e)}")
-            return Response(
-                {'error': 'Failed to get analytics data'}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            return handle_exception(
+                exception=e,
+                default_message='Failed to get enhanced analytics'
             )
     
     def _get_recent_activity_summary(self, user_preference):
@@ -1506,7 +1860,7 @@ def data_collection_settings(request):
     try:
         user_pref = UserPreference.objects(user_id=str(request.user.id)).first()
         if not user_pref:
-            return Response({'error': 'User preferences not found'}, status=status.HTTP_404_NOT_FOUND)
+            return PreferencesAPIResponse.preferences_not_found()
         
         settings = request.data.get('settings', {})
         
@@ -1524,7 +1878,10 @@ def data_collection_settings(request):
         
     except Exception as e:
         logger.error(f"Error updating data collection settings for user {request.user.id}: {str(e)}")
-        return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return handle_exception(
+            exception=e,
+            default_message='Internal server error occurred'
+        )
 
 
 @api_view(['PUT'])
@@ -1534,7 +1891,7 @@ def update_consent(request, consent_id):
     try:
         user_pref = UserPreference.get_by_user_id(request.user.id)
         if not user_pref:
-            return Response({'error': 'User preferences not found'}, status=status.HTTP_404_NOT_FOUND)
+            return PreferencesAPIResponse.preferences_not_found()
 
         granted = bool(request.data.get('granted', False))
 
@@ -1580,7 +1937,10 @@ def update_consent(request, consent_id):
 
     except Exception as e:
         logger.error(f"Error updating consent {consent_id} for user {request.user.id}: {str(e)}")
-        return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return handle_exception(
+            exception=e,
+            default_message='Internal server error occurred'
+        )
 
 
 @api_view(['POST'])
@@ -1590,7 +1950,7 @@ def revoke_all_consents(request):
     try:
         user_pref = UserPreference.get_by_user_id(request.user.id)
         if not user_pref:
-            return Response({'error': 'User preferences not found'}, status=status.HTTP_404_NOT_FOUND)
+            return PreferencesAPIResponse.preferences_not_found()
 
         revoke_types = [
             'analytics', 'personalization', 'marketing', 'social_data',
@@ -1624,7 +1984,10 @@ def revoke_all_consents(request):
 
     except Exception as e:
         logger.error(f"Error revoking all consents for user {request.user.id}: {str(e)}")
-        return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return handle_exception(
+            exception=e,
+            default_message='Internal server error occurred'
+        )
 
 
 @api_view(['GET'])
@@ -1637,7 +2000,7 @@ def download_consent_history(request):
 
         user_pref = UserPreference.get_by_user_id(request.user.id)
         if not user_pref:
-            return Response({'error': 'User preferences not found'}, status=status.HTTP_404_NOT_FOUND)
+            return PreferencesAPIResponse.preferences_not_found()
 
         consent_history = {
             'user_id': request.user.id,
@@ -1665,4 +2028,81 @@ def download_consent_history(request):
 
     except Exception as e:
         logger.error(f"Error generating consent history for user {request.user.id}: {str(e)}")
-        return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return handle_exception(
+            exception=e,
+            default_message='Internal server error occurred'
+        )
+
+
+# =============================================================================
+# DEBUG API ENDPOINTS (development/troubleshooting)
+# =============================================================================
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PreferencesDebugView(views.APIView):
+    """
+    Debug endpoint for troubleshooting preferences data flow issues.
+    Used to diagnose why onboarding data doesn't appear in preferences page.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """Get comprehensive debug information for current user's preferences"""
+        try:
+            # Dump current user's state
+            debug_data = PreferencesDebugger.dump_user_state(request.user.id)
+
+            # Also run flow verification
+            flow_verification = PreferencesDebugger.verify_onboarding_to_preferences_flow(request.user.id)
+
+            response_data = {
+                'user_id': request.user.id,
+                'timestamp': datetime.utcnow().isoformat(),
+                'debug_dump': debug_data,
+                'flow_verification': flow_verification,
+                'recommendations': _generate_debug_recommendations(debug_data, flow_verification)
+            }
+
+            logger.info(f"🔍 DEBUG ENDPOINT ACCESSED - User {request.user.id}")
+
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"❌ DEBUG ENDPOINT FAILED - User {request.user.id}: {str(e)}")
+            return Response({
+                'error': 'Debug endpoint failed',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _generate_debug_recommendations(debug_data: dict, flow_verification: dict) -> list:
+    """Generate actionable recommendations based on debug findings"""
+    recommendations = []
+
+    # Check for common issues
+    issues = debug_data.get('issues_detected', [])
+
+    if 'No preferences record found in MongoDB' in issues:
+        recommendations.append('User needs to complete onboarding to create preferences record')
+
+    if 'Basic info is missing' in issues:
+        recommendations.append('Re-run onboarding process to populate basic info')
+
+    if 'Content preferences are missing' in issues:
+        recommendations.append('Check onboarding serializer - content preferences not being saved')
+
+    if any('serialization' in issue.lower() for issue in issues):
+        recommendations.append('Check UserPreferenceSerializer for field mapping issues')
+
+    if not flow_verification.get('flow_healthy', True):
+        recommendations.append('Data flow from onboarding to preferences has issues - check bottlenecks')
+
+    # Check cache issues
+    if debug_data.get('database_state', {}).get('preferences_exist') and \
+       not debug_data.get('serialization_state', {}).get('serialization_successful'):
+        recommendations.append('Data exists in DB but serialization fails - check model-serializer mapping')
+
+    if not recommendations:
+        recommendations.append('No issues detected - preferences should display correctly')
+
+    return recommendations

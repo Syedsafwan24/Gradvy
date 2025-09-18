@@ -6,37 +6,83 @@
 'use client';
 
 import React from 'react';
-import { AlertTriangle, RefreshCw, Home, FileX, Wifi, Server } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Home, FileX, Wifi, Server, Shield, Clock, Ban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { classifyError, getErrorCategoryName, shouldTriggerLogout } from '@/utils/apiErrors';
 
-// Generic error fallback component
-export const GenericErrorFallback = ({ error, resetError, errorId }) => (
-  <Card className="p-8 text-center max-w-md mx-auto">
-    <div className="mx-auto w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
-      <AlertTriangle className="h-8 w-8 text-red-600" />
-    </div>
-    <h2 className="text-xl font-semibold text-gray-900 mb-2">Something went wrong</h2>
-    <p className="text-gray-600 mb-6">
-      An unexpected error occurred. Please try again or contact support if the problem persists.
-    </p>
-    {errorId && (
-      <Badge variant="outline" className="mb-4 text-xs">
-        Error ID: {errorId}
-      </Badge>
-    )}
-    <div className="space-y-2">
-      <Button onClick={resetError} className="w-full">
-        <RefreshCw className="h-4 w-4 mr-2" />
-        Try Again
-      </Button>
-      <Button variant="outline" onClick={() => window.location.reload()} className="w-full">
-        Reload Page
-      </Button>
-    </div>
-  </Card>
-);
+// Enhanced generic error fallback component with better error classification
+export const GenericErrorFallback = ({ error, resetError, errorId, normalizedError }) => {
+  const errorCategory = normalizedError ? classifyError(normalizedError) : 'unknown';
+  const categoryName = getErrorCategoryName(errorCategory);
+  const errorMessage = normalizedError?.message || 'An unexpected error occurred. Please try again or contact support if the problem persists.';
+
+  const getErrorIcon = () => {
+    switch (errorCategory) {
+      case 'authentication':
+        return <Shield className="h-8 w-8 text-red-600" />;
+      case 'authorization':
+        return <Ban className="h-8 w-8 text-red-600" />;
+      case 'rate_limit':
+        return <Clock className="h-8 w-8 text-orange-600" />;
+      case 'server':
+        return <Server className="h-8 w-8 text-red-600" />;
+      case 'network':
+        return <Wifi className="h-8 w-8 text-orange-600" />;
+      default:
+        return <AlertTriangle className="h-8 w-8 text-red-600" />;
+    }
+  };
+
+  const getErrorColor = () => {
+    switch (errorCategory) {
+      case 'rate_limit':
+      case 'network':
+        return 'bg-orange-100';
+      default:
+        return 'bg-red-100';
+    }
+  };
+
+  return (
+    <Card className="p-8 text-center max-w-md mx-auto">
+      <div className={`mx-auto w-16 h-16 ${getErrorColor()} rounded-full flex items-center justify-center mb-4`}>
+        {getErrorIcon()}
+      </div>
+      <h2 className="text-xl font-semibold text-gray-900 mb-2">{categoryName}</h2>
+      <p className="text-gray-600 mb-6">
+        {errorMessage}
+      </p>
+      {(errorId || normalizedError?.requestId) && (
+        <Badge variant="outline" className="mb-4 text-xs">
+          Error ID: {errorId || normalizedError?.requestId}
+        </Badge>
+      )}
+      {normalizedError?.code && (
+        <Badge variant="secondary" className="mb-4 text-xs ml-2">
+          Code: {normalizedError.code}
+        </Badge>
+      )}
+      <div className="space-y-2">
+        <Button onClick={resetError} className="w-full">
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Try Again
+        </Button>
+        {errorCategory !== 'authentication' && (
+          <Button variant="outline" onClick={() => window.location.reload()} className="w-full">
+            Reload Page
+          </Button>
+        )}
+        {shouldTriggerLogout(normalizedError) && (
+          <Button variant="outline" onClick={() => window.location.href = '/login'} className="w-full">
+            Sign In Again
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+};
 
 // Component-level error fallback (smaller, inline)
 export const ComponentErrorFallback = ({ error, resetError, componentName }) => (

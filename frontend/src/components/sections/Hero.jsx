@@ -99,7 +99,7 @@ const Hero = () => {
 								<ArrowRight className='ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform' />
 							</Button>
 						</Link>
-						<Link href='/onboarding?flow=discover'>
+						<Link href='/app/onboarding?flow=discover'>
 							<Button size='xl' variant='outline' className='group'>
 								Help me decide
 								<Brain className='ml-2 h-5 w-5 group-hover:rotate-12 transition-transform' />

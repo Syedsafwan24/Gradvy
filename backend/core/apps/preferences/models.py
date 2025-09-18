@@ -52,7 +52,8 @@ class InteractionData(EmbeddedDocument):
     INTERACTION_TYPES = [
         'course_click', 'quiz_attempt', 'video_watch', 'search',
         'page_view', 'course_enroll', 'course_complete', 'bookmark',
-        'rating_given', 'review_written', 'course_abandoned'
+        'rating_given', 'review_written', 'course_abandoned',
+        'onboarding_started', 'onboarding_flow_completed'
     ]
     type = StringField(choices=INTERACTION_TYPES, required=True)
     
@@ -112,7 +113,7 @@ class ContentPreferences(EmbeddedDocument):
     duration_preference = StringField(choices=DURATION_CHOICES, default='mixed')
     
     # Language preferences
-    language_preference = ListField(StringField(max_length=20), default=['english'])
+    language_preference = ListField(StringField(max_length=20), default=['english', 'hindi'])
     
     # Minimum instructor rating
     instructor_ratings_min = FloatField(min_value=0.0, max_value=5.0, default=3.0)
@@ -541,18 +542,64 @@ class UserPreference(Document):
     }
     
     def save(self, *args, **kwargs):
-        """Override save to update timestamp"""
+        """Override save to update timestamp and completion percentage"""
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Enhanced debug logging for MongoDB operations
+        logger.debug(f"💾 MONGODB SAVE START - User {self.user_id}")
+        logger.debug(f"🔍 Save operation details: args={args}, kwargs={kwargs}")
+
         self.updated_at = datetime.utcnow()
-        return super().save(*args, **kwargs)
+
+        # Always recalculate completion percentage before saving
+        old_percentage = getattr(self, 'profile_completion_percentage', None)
+        new_percentage = self.calculate_profile_completion()
+        self.profile_completion_percentage = new_percentage
+
+        logger.debug(f"📊 Completion percentage: {old_percentage} → {new_percentage}")
+        logger.debug(f"🔍 Basic info exists: {bool(self.basic_info)}")
+        logger.debug(f"🔍 Content prefs exists: {bool(self.content_preferences)}")
+        logger.debug(f"🏷️  Onboarding status: {self.onboarding_status}")
+
+        # Log significant completion percentage changes
+        if old_percentage is not None and abs(new_percentage - old_percentage) >= 5.0:
+            logger.info(f"📈 Profile completion updated for user {self.user_id}: {old_percentage:.1f}% → {new_percentage:.1f}%")
+
+        try:
+            logger.debug(f"🔄 Executing MongoDB save operation for user {self.user_id}")
+            result = super().save(*args, **kwargs)
+            logger.info(f"✅ MONGODB SAVE SUCCESS - User {self.user_id} preferences saved to database")
+            return result
+        except Exception as e:
+            logger.error(f"❌ MONGODB SAVE FAILED - User {self.user_id}: {str(e)}")
+            logger.error(f"🔍 Exception type: {type(e).__name__}")
+            raise
     
     def add_interaction(self, interaction_type: str, data: Dict[str, Any], context: Dict[str, Any] = None):
         """Add a new interaction to the user's history with enhanced privacy-aware tracking"""
+
+        # TEMPORARY FIX: Filter interaction types to match MongoDB schema validation
+        # TODO: Update MongoDB schema to include all INTERACTION_TYPES
+        mongodb_allowed_types = [
+            'course_click', 'quiz_attempt', 'video_watch', 'search', 'page_view',
+            'course_enroll', 'course_complete'
+        ]
+
+        if interaction_type not in mongodb_allowed_types:
+            # Log the filtered interaction but don't save to avoid validation errors
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Skipping interaction type '{interaction_type}' due to MongoDB schema validation. "
+                         f"Allowed types: {mongodb_allowed_types}")
+            return
+
         # Check privacy consent before storing detailed interaction data
         if not self.privacy_settings or not self.privacy_settings.allow_analytics:
             # Store minimal interaction data without detailed tracking
             data = {'type': interaction_type, 'timestamp': datetime.utcnow().isoformat()}
             context = {'consent_limited': True}
-        
+
         interaction = InteractionData(
             type=interaction_type,
             data=data,
@@ -560,11 +607,11 @@ class UserPreference(Document):
             timestamp=datetime.utcnow()
         )
         self.interactions.append(interaction)
-        
+
         # Update behavioral patterns if consent given
         if self.privacy_settings and self.privacy_settings.allow_behavioral_analysis:
             self._update_behavioral_patterns_from_interaction(interaction)
-        
+
         self.save()
     
     def get_recent_interactions(self, days: int = 30, interaction_type: str = None) -> List[InteractionData]:
@@ -639,10 +686,21 @@ class UserPreference(Document):
         
         return min(completion_score, 100.0)
     
-    def update_completion_percentage(self):
-        """Update the stored completion percentage"""
-        self.profile_completion_percentage = self.calculate_profile_completion()
-        self.save()
+    def update_completion_percentage(self, save_now=False):
+        """Update the stored completion percentage
+
+        Args:
+            save_now (bool): If True, saves immediately. If False, caller is responsible for saving.
+                           Default is False to avoid double calculation since save() auto-calculates.
+        """
+        if save_now:
+            # Force recalculation and save immediately
+            self.profile_completion_percentage = self.calculate_profile_completion()
+            self.save()
+        else:
+            # Just mark for recalculation - save() will handle the calculation
+            # This avoids double calculation since save() always recalculates
+            pass
     
     def mark_onboarding_completed(self, onboarding_type='full'):
         """Mark onboarding as completed and update completion time"""
@@ -651,7 +709,8 @@ class UserPreference(Document):
         else:
             self.onboarding_status = 'full_completed'
         self.onboarding_completed_at = datetime.utcnow()
-        self.update_completion_percentage()
+        # Don't call update_completion_percentage() here - let the caller handle saving
+        # The save() method will automatically recalculate completion percentage
     
     def add_achievement_badge(self, badge_name: str):
         """Add an achievement badge to user's collection"""
@@ -687,20 +746,51 @@ class UserPreference(Document):
     @classmethod
     def get_by_user_id(cls, user_id: int) -> Optional['UserPreference']:
         """Get user preferences by Django user ID"""
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.debug(f"🔍 MONGODB QUERY START - Getting preferences for user {user_id}")
+
         try:
-            return cls.objects.get(user_id=user_id)
+            result = cls.objects.get(user_id=user_id)
+            logger.info(f"✅ MONGODB QUERY SUCCESS - Found preferences for user {user_id}")
+            logger.debug(f"📊 Found completion: {result.profile_completion_percentage:.1f}%")
+            logger.debug(f"🏷️  Found onboarding status: {result.onboarding_status}")
+            logger.debug(f"🔍 Found basic info: {bool(result.basic_info)}")
+            logger.debug(f"🔍 Found content prefs: {bool(result.content_preferences)}")
+            return result
         except DoesNotExist:
+            logger.warning(f"❌ MONGODB QUERY - No preferences found for user {user_id}")
             return None
+        except Exception as e:
+            logger.error(f"❌ MONGODB QUERY FAILED - User {user_id}: {str(e)}")
+            logger.error(f"🔍 Exception type: {type(e).__name__}")
+            raise
     
     @classmethod
     def create_for_user(cls, user_id: int, basic_info: Dict[str, Any] = None) -> 'UserPreference':
         """Create new user preference record"""
-        preference = cls(user_id=user_id)
-        
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.debug(f"🆕 MONGODB CREATE START - Creating preferences for user {user_id}")
+        logger.debug(f"📋 Basic info provided: {bool(basic_info)}")
+
         if basic_info:
-            preference.basic_info = BasicInfo(**basic_info)
-        
+            logger.debug(f"📋 Basic info fields: {list(basic_info.keys())}")
+
+        preference = cls(user_id=user_id)
+
+        if basic_info:
+            try:
+                preference.basic_info = BasicInfo(**basic_info)
+                logger.debug(f"✅ Basic info created successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to create basic info: {str(e)}")
+                raise
+
         preference.save()
+        logger.info(f"✅ MONGODB CREATE SUCCESS - User {user_id} preferences created")
         return preference
     
     def record_consent(self, consent_types: List[str], ip_address: str = None, user_agent: str = None):
@@ -936,11 +1026,9 @@ class UserPreference(Document):
             'last_privacy_update': self.privacy_settings.last_updated
         }
     
-    # Compatibility properties for legacy code that uses old boolean fields
-    @property
-    def onboarding_completed(self):
+    # Helper methods for onboarding status (replacing problematic @property decorators)
+    def get_onboarding_completed(self):
         """
-        Compatibility property for legacy code.
         Returns True if onboarding is completed (either quick or full).
         Handles both new onboarding_status field and legacy boolean fields.
         """
@@ -959,10 +1047,8 @@ class UserPreference(Document):
         except (AttributeError, Exception):
             return False
 
-    @property
-    def quick_onboarding_completed(self):
+    def get_quick_onboarding_completed(self):
         """
-        Compatibility property for legacy code.
         Returns True if quick onboarding is completed.
         Handles both new onboarding_status field and legacy boolean fields.
         """
@@ -980,8 +1066,7 @@ class UserPreference(Document):
 
         except (AttributeError, Exception):
             return False
-    
-    @property
+
     def is_onboarding_complete(self):
         """Check if any onboarding has been completed"""
         try:
@@ -990,14 +1075,42 @@ class UserPreference(Document):
             return self.onboarding_status != 'not_started'
         except (AttributeError, Exception):
             return False
-    
-    @property
+
     def is_full_onboarding_complete(self):
         """Check if full onboarding has been completed"""
         try:
             if not hasattr(self, 'onboarding_status') or self.onboarding_status is None:
                 return False
             return self.onboarding_status == 'full_completed'
+        except (AttributeError, Exception):
+            return False
+
+    def is_onboarding_truly_complete(self):
+        """
+        Check if onboarding has all required data for true completion.
+
+        CRITICAL: Both quick and full onboarding must have basic_info AND content_preferences
+        because the preferences page requires both embedded documents regardless of how
+        onboarding was completed. Missing content_preferences breaks the preferences UI.
+        """
+        try:
+            # Check onboarding status
+            if not hasattr(self, 'onboarding_status') or self.onboarding_status is None:
+                return False
+
+            if self.onboarding_status == 'not_started':
+                return False
+
+            # BOTH basic_info and content_preferences are required for ANY completed onboarding
+            # This is because the preferences page expects both embedded documents to exist
+            if self.basic_info is None:
+                return False
+
+            if self.content_preferences is None:
+                return False
+
+            return True
+
         except (AttributeError, Exception):
             return False
 

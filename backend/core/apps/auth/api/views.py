@@ -1,5 +1,9 @@
 from rest_framework import status, views, permissions
 from rest_framework.response import Response
+from utils.responses import (
+    APISuccess, APIError, APIValidationError, AuthAPIResponse,
+    StatusCodes, ErrorCodes, handle_exception
+)
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django_otp import devices_for_user
@@ -55,21 +59,17 @@ class LoginView(TokenObtainPairView):
                 # Log successful authentication (pending MFA)
                 log_auth_event(user, 'login_mfa_required', request, success=True)
                 
-                return Response({
-                    'mfa_required': True,
-                    'mfa_token': mfa_token,
-                    'message': 'MFA verification required'
-                }, status=status.HTTP_200_OK)
+                return AuthAPIResponse.mfa_required(
+                    mfa_token=mfa_token,
+                    message='MFA verification required'
+                )
 
             # No MFA required, proceed with login
             return self._complete_login(request, user, remember_me)
             
         except AxesBackendPermissionDenied:
             # This is raised by django-axes when user is locked out
-            return Response({
-                'detail': 'Account temporarily locked due to too many failed login attempts. Please try again later.',
-                'error_code': 'ACCOUNT_LOCKED'
-            }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            return AuthAPIResponse.account_locked()
             
         except ValidationError as e:
             # Log failed attempt - axes middleware will handle counting failures
@@ -80,23 +80,20 @@ class LoginView(TokenObtainPairView):
             except User.DoesNotExist:
                 logger.warning(f"Login attempt with non-existent email: {email}")
             
-            return Response({
-                'detail': 'Invalid email or password.',
-                'error_code': 'INVALID_CREDENTIALS'
-            }, status=status.HTTP_401_UNAUTHORIZED)
+            return AuthAPIResponse.invalid_credentials()
             
         except PermissionDenied as e:
-            return Response({
-                'detail': str(e),
-                'error_code': 'PERMISSION_DENIED'
-            }, status=status.HTTP_403_FORBIDDEN)
+            return APIError.forbidden(
+                message=str(e),
+                code=ErrorCodes.INSUFFICIENT_PERMISSIONS
+            )
             
         except Exception as e:
             logger.error(f"Unexpected error during login: {str(e)}")
-            return Response({
-                'detail': 'An error occurred during login. Please try again.',
-                'error_code': 'INTERNAL_ERROR'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='An error occurred during login. Please try again.'
+            )
 
     def _complete_login(self, request, user, remember_me=False):
         # Generate tokens with custom expiry for remember_me
@@ -111,14 +108,17 @@ class LoginView(TokenObtainPairView):
         # Log successful login
         log_auth_event(user, 'login_success', request, success=True)
 
-        response_data = {
-            'message': 'Login successful',
+        tokens = {
             'access': str(access),
-            'refresh': str(refresh),
-            'user': UserSerializer(user).data
+            'refresh': str(refresh)
         }
-        
-        response = Response(response_data, status=status.HTTP_200_OK)
+
+        user_data = UserSerializer(user).data
+        response = AuthAPIResponse.login_success(
+            user_data=user_data,
+            tokens=tokens,
+            message='Login successful'
+        )
         
         # Set refresh token as HTTP-only cookie
         cookie_max_age = 30 * 24 * 60 * 60 if remember_me else 7 * 24 * 60 * 60  # 30 days or 7 days
@@ -141,8 +141,10 @@ class MFAVerifyView(views.APIView):
         # Get MFA token from request data
         mfa_token = request.data.get('mfa_token')
         if not mfa_token:
-            return Response({'error': 'No pending authentication'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
+            return APIError.bad_request(
+                message='No pending authentication',
+                code=ErrorCodes.INVALID_TOKEN
+            )
 
         try:
             # Decode the MFA token
@@ -151,21 +153,26 @@ class MFAVerifyView(views.APIView):
             remember_me = mfa_payload.get('remember_me', False)
             
             if not mfa_payload.get('mfa_pending'):
-                return Response({'error': 'Invalid MFA token'}, 
-                              status=status.HTTP_400_BAD_REQUEST)
+                return APIError.bad_request(
+                    message='Invalid MFA token',
+                    code=ErrorCodes.INVALID_TOKEN
+                )
                 
         except jwt.ExpiredSignatureError:
-            return Response({'error': 'MFA token expired. Please login again.'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
+            return AuthAPIResponse.token_expired()
         except jwt.InvalidTokenError:
-            return Response({'error': 'Invalid MFA token'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
+            return APIError.bad_request(
+                message='Invalid MFA token',
+                code=ErrorCodes.INVALID_TOKEN
+            )
 
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
-            return Response({'error': 'Invalid user'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
+            return APIError.bad_request(
+                message='Invalid user',
+                code=ErrorCodes.RESOURCE_NOT_FOUND
+            )
 
         serializer = MFAVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -175,8 +182,10 @@ class MFAVerifyView(views.APIView):
         # Verify TOTP code
         totp_devices = devices_for_user(user, confirmed=True)
         if not totp_devices:
-            return Response({'error': 'No MFA device found'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
+            return APIError.bad_request(
+                message='No MFA device found',
+                code=ErrorCodes.RESOURCE_NOT_FOUND
+            )
 
         for device in totp_devices:
             if device.verify_token(code):
@@ -188,8 +197,7 @@ class MFAVerifyView(views.APIView):
 
         # MFA failed
         log_auth_event(user, 'mfa_verify', request, success=False)
-        return Response({'error': 'Invalid MFA code'}, 
-                      status=status.HTTP_400_BAD_REQUEST)
+        return AuthAPIResponse.invalid_mfa_code()
 
     def _complete_login(self, request, user, remember_me=False):
         # Generate tokens with custom expiry for remember_me
@@ -204,14 +212,17 @@ class MFAVerifyView(views.APIView):
         # Log successful login
         log_auth_event(user, 'login_success', request, success=True)
 
-        response_data = {
-            'message': 'Login successful',
+        tokens = {
             'access': str(access),
-            'refresh': str(refresh),
-            'user': UserSerializer(user).data
+            'refresh': str(refresh)
         }
-        
-        response = Response(response_data, status=status.HTTP_200_OK)
+
+        user_data = UserSerializer(user).data
+        response = AuthAPIResponse.login_success(
+            user_data=user_data,
+            tokens=tokens,
+            message='Login successful'
+        )
         
         # Set refresh token as HTTP-only cookie
         cookie_max_age = 30 * 24 * 60 * 60 if remember_me else 7 * 24 * 60 * 60  # 30 days or 7 days
@@ -234,7 +245,10 @@ class UserProfileView(views.APIView):
     def get(self, request):
         """Get current user profile data"""
         serializer = UserSerializer(request.user)
-        return Response(serializer.data)
+        return APISuccess.create(
+            data=serializer.data,
+            message="User profile retrieved successfully"
+        )
 
     def put(self, request):
         """Full profile update (replace all fields)"""
@@ -247,9 +261,9 @@ class UserProfileView(views.APIView):
                          details={'updated_fields': list(request.data.keys())})
             return Response(response_serializer.data)
         
-        log_auth_event(request.user, 'profile_update_failed', request, success=False, 
+        log_auth_event(request.user, 'profile_update_failed', request, success=False,
                       details={'errors': serializer.errors})
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return APIValidationError.create_from_serializer(serializer)
 
     def patch(self, request):
         """Partial profile update (update only provided fields)"""
@@ -262,9 +276,9 @@ class UserProfileView(views.APIView):
                          details={'updated_fields': list(request.data.keys())})
             return Response(response_serializer.data)
         
-        log_auth_event(request.user, 'profile_update_failed', request, success=False, 
+        log_auth_event(request.user, 'profile_update_failed', request, success=False,
                       details={'errors': serializer.errors})
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return APIValidationError.create_from_serializer(serializer)
 
 @method_decorator(csrf_exempt, name='dispatch')
 class PasswordChangeView(views.APIView):
@@ -282,7 +296,9 @@ class PasswordChangeView(views.APIView):
             # Log password change
             log_auth_event(user, 'password_change', request, success=True)
 
-            return Response({'message': 'Password changed successfully'})
+            return APISuccess.create(
+                message='Password changed successfully'
+            )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -321,12 +337,15 @@ class MFAEnrollmentView(views.APIView):
         # Generate backup codes
         backup_codes = generate_backup_codes(user)
 
-        return Response({
-            'secret': base32_secret, # Return base32 secret to frontend
-            'qr_code': f"data:image/png;base64,{qr_code}",
-            'backup_codes': backup_codes,
-            'device_id': device.id
-        })
+        return APISuccess.create(
+            data={
+                'secret': base32_secret,
+                'qr_code': f"data:image/png;base64,{qr_code}",
+                'backup_codes': backup_codes,
+                'device_id': device.id
+            },
+            message='MFA enrollment initiated successfully'
+        )
 
     def put(self, request):
         """Confirm MFA enrollment"""
@@ -339,8 +358,10 @@ class MFAEnrollmentView(views.APIView):
         try:
             device = TOTPDevice.objects.get(id=device_id, user=request.user)
         except TOTPDevice.DoesNotExist:
-            return Response({'error': 'Device not found'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
+            return APIError.not_found(
+                message='MFA device not found',
+                code=ErrorCodes.RESOURCE_NOT_FOUND
+            )
 
         is_valid = device.verify_token(code)
 
@@ -354,10 +375,11 @@ class MFAEnrollmentView(views.APIView):
             # Log MFA enrollment
             log_auth_event(request.user, 'mfa_enroll', request, success=True)
 
-            return Response({'message': 'MFA enrolled successfully'})
+            return APISuccess.create(
+                message='MFA enrolled successfully'
+            )
 
-        return Response({'error': 'Invalid code'}, 
-                      status=status.HTTP_400_BAD_REQUEST)
+        return AuthAPIResponse.invalid_mfa_code()
 
 @method_decorator(csrf_exempt, name='dispatch')
 class CookieTokenRefreshView(views.APIView):
@@ -372,10 +394,10 @@ class CookieTokenRefreshView(views.APIView):
             refresh_token_str = request.COOKIES.get('refresh_token')
             
             if not refresh_token_str:
-                return Response({
-                    'detail': 'Refresh token not found in cookies',
-                    'error_code': 'NO_REFRESH_TOKEN'
-                }, status=status.HTTP_401_UNAUTHORIZED)
+                return APIError.unauthorized(
+                    message='Refresh token not found in cookies',
+                    code=ErrorCodes.INVALID_TOKEN
+                )
             
             try:
                 # Validate and refresh the token
@@ -392,8 +414,11 @@ class CookieTokenRefreshView(views.APIView):
                         'access': new_access_token,
                         'message': 'Token refreshed successfully'
                     }
-                    
-                    response = Response(response_data, status=status.HTTP_200_OK)
+
+                    response = APISuccess.create(
+                        data={'access': new_access_token},
+                        message='Token refreshed successfully'
+                    )
                     
                     # Set new refresh token as httpOnly cookie
                     response.set_cookie(
@@ -410,22 +435,25 @@ class CookieTokenRefreshView(views.APIView):
                         'access': new_access_token,
                         'message': 'Token refreshed successfully'
                     }
-                    response = Response(response_data, status=status.HTTP_200_OK)
+                    response = APISuccess.create(
+                        data={'access': new_access_token},
+                        message='Token refreshed successfully'
+                    )
                 
                 return response
                 
             except TokenError as e:
-                return Response({
-                    'detail': 'Invalid or expired refresh token',
-                    'error_code': 'INVALID_REFRESH_TOKEN'
-                }, status=status.HTTP_401_UNAUTHORIZED)
+                return APIError.unauthorized(
+                    message='Invalid or expired refresh token',
+                    code=ErrorCodes.TOKEN_EXPIRED
+                )
                 
         except Exception as e:
             logger.error(f"Token refresh error: {str(e)}")
-            return Response({
-                'detail': 'Token refresh failed',
-                'error_code': 'REFRESH_ERROR'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='Token refresh failed'
+            )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -446,9 +474,9 @@ class LogoutView(views.APIView):
             log_auth_event(request.user, 'logout', request, success=True)
             
             # Create response and clear authentication cookies
-            response = Response({
-                'message': 'Logout successful'
-            }, status=status.HTTP_200_OK)
+            response = APISuccess.create(
+                message='Logout successful'
+            )
             
             # Clear authentication cookies
             response.delete_cookie('refresh_token')
@@ -460,9 +488,9 @@ class LogoutView(views.APIView):
         except Exception as e:
             logger.error(f"Logout error: {str(e)}")
             # Even if token blacklisting fails, clear cookies and return success
-            response = Response({
-                'message': 'Logout completed'
-            }, status=status.HTTP_200_OK)
+            response = APISuccess.create(
+                message='Logout completed'
+            )
             
             # Clear authentication cookies
             response.delete_cookie('refresh_token')
@@ -500,10 +528,15 @@ class MFADisableView(views.APIView):
             # Log MFA disable event
             log_auth_event(user, 'mfa_disable', request, success=True)
 
-            return Response({'message': 'MFA disabled successfully'}, status=status.HTTP_200_OK)
+            return APISuccess.create(
+                message='MFA disabled successfully'
+            )
         except Exception as e:
             log_auth_event(user, 'mfa_disable', request, success=False, details={'error': str(e)})
-            return Response({'error': 'Failed to disable MFA'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='Failed to disable MFA'
+            )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -516,12 +549,11 @@ class MFABackupCodesView(views.APIView):
         user = request.user
         
         if not user.mfa_enrolled:
-            return Response({
-                'error': 'MFA not enabled',
-                'message': 'Multi-factor authentication must be enabled before accessing backup codes',
-                'backup_codes': [],
-                'count': 0
-            }, status=status.HTTP_200_OK)
+            return APIError.bad_request(
+                message='Multi-factor authentication must be enabled before accessing backup codes',
+                code=ErrorCodes.OPERATION_NOT_ALLOWED,
+                details={'backup_codes': [], 'count': 0}
+            )
         
         try:
             # Get user's unused backup codes from the database
@@ -532,22 +564,31 @@ class MFABackupCodesView(views.APIView):
             
             log_auth_event(user, 'backup_codes_viewed', request, success=True)
             
-            return Response({
-                'backup_codes': list(backup_codes),
-                'count': len(backup_codes)
-            }, status=status.HTTP_200_OK)
+            return APISuccess.create(
+                data={
+                    'backup_codes': list(backup_codes),
+                    'count': len(backup_codes)
+                },
+                message='Backup codes retrieved successfully'
+            )
             
         except Exception as e:
             logger.error(f"Error retrieving backup codes for user {user.email}: {str(e)}")
             log_auth_event(user, 'backup_codes_viewed', request, success=False, details={'error': str(e)})
-            return Response({'error': 'Failed to retrieve backup codes'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='Failed to retrieve backup codes'
+            )
 
     def post(self, request):
         """Regenerate backup codes"""
         user = request.user
         
         if not user.mfa_enrolled:
-            return Response({'error': 'MFA not enabled'}, status=status.HTTP_400_BAD_REQUEST)
+            return APIError.bad_request(
+                message='MFA not enabled',
+                code=ErrorCodes.OPERATION_NOT_ALLOWED
+            )
         
         try:
             # Delete existing unused backup codes
@@ -558,16 +599,21 @@ class MFABackupCodesView(views.APIView):
             
             log_auth_event(user, 'backup_codes_regenerated', request, success=True)
             
-            return Response({
-                'message': 'Backup codes regenerated successfully',
-                'backup_codes': new_backup_codes,
-                'count': len(new_backup_codes)
-            }, status=status.HTTP_200_OK)
+            return APISuccess.create(
+                data={
+                    'backup_codes': new_backup_codes,
+                    'count': len(new_backup_codes)
+                },
+                message='Backup codes regenerated successfully'
+            )
             
         except Exception as e:
             logger.error(f"Error regenerating backup codes for user {user.email}: {str(e)}")
             log_auth_event(user, 'backup_codes_regenerated', request, success=False, details={'error': str(e)})
-            return Response({'error': 'Failed to regenerate backup codes'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='Failed to regenerate backup codes'
+            )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -593,11 +639,17 @@ class MFAStatusView(views.APIView):
                 'enrollment_date': totp_devices.first().created_at if totp_devices.exists() else None,
             }
             
-            return Response(status_data, status=status.HTTP_200_OK)
+            return APISuccess.create(
+                data=status_data,
+                message='MFA status retrieved successfully'
+            )
             
         except Exception as e:
             logger.error(f"Error getting MFA status for user {user.email}: {str(e)}")
-            return Response({'error': 'Failed to get MFA status'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='Failed to get MFA status'
+            )
 
 
 class UserRegistrationView(views.APIView):
@@ -618,14 +670,17 @@ class UserRegistrationView(views.APIView):
             # Get user data
             user_data = UserSerializer(user).data
             
-            response_data = {
-                'message': 'Registration successful',
-                'user': user_data,
+            tokens = {
                 'access': access_token,
                 'refresh': refresh_token
             }
-            
-            response = Response(response_data, status=status.HTTP_201_CREATED)
+
+            response = AuthAPIResponse.login_success(
+                user_data=user_data,
+                tokens=tokens,
+                message='Registration successful'
+            )
+            response.status_code = StatusCodes.CREATED
             
             # Set refresh token as HTTP-only cookie
             response.set_cookie(
@@ -642,10 +697,7 @@ class UserRegistrationView(views.APIView):
             
             return response
         
-        return Response({
-            'message': 'Registration failed',
-            'errors': serializer.errors
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return APIValidationError.create_from_serializer(serializer)
 
 
 class PasswordResetView(views.APIView):
@@ -679,24 +731,23 @@ class PasswordResetView(views.APIView):
                 
                 # TODO: Send email with token - for now return token for development
                 # In production, this would send an email with a link containing the token
-                return Response({
-                    'message': f'Password reset instructions have been sent to {email}',
-                    'token': token,  # Remove this in production - only for development testing
-                    'expires_at': reset_token.expires_at,
-                    'note': 'Email functionality will be implemented. Token provided for development testing.'
-                }, status=status.HTTP_200_OK)
+                return APISuccess.create(
+                    data={
+                        'token': token,  # Remove this in production - only for development testing
+                        'expires_at': reset_token.expires_at,
+                        'note': 'Email functionality will be implemented. Token provided for development testing.'
+                    },
+                    message=f'Password reset instructions have been sent to {email}'
+                )
                 
             except User.DoesNotExist:
                 # Don't reveal if user exists - return same message
-                return Response({
-                    'message': f'Password reset instructions have been sent to {email}',
-                    'note': 'If this email exists in our system, you will receive reset instructions.'
-                }, status=status.HTTP_200_OK)
+                return APISuccess.create(
+                    message=f'Password reset instructions have been sent to {email}',
+                    data={'note': 'If this email exists in our system, you will receive reset instructions.'}
+                )
         
-        return Response({
-            'message': 'Password reset failed',
-            'errors': serializer.errors
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return APIValidationError.create_from_serializer(serializer)
     
     def _generate_reset_token(self):
         """Generate a secure random token for password reset"""
@@ -733,23 +784,20 @@ class PasswordResetConfirmView(views.APIView):
                 # Clean up any other reset tokens for this user
                 PasswordResetToken.objects.filter(user=user, used=False).delete()
                 
-                return Response({
-                    'message': 'Password has been reset successfully. You can now login with your new password.',
-                    'success': True
-                }, status=status.HTTP_200_OK)
+                return APISuccess.create(
+                    message='Password has been reset successfully. You can now login with your new password.',
+                    data={'success': True}
+                )
                 
             except Exception as e:
                 logger.error(f"Error resetting password for user {user.email}: {str(e)}")
                 log_auth_event(user, 'password_reset_confirmed', request, success=False, details={'error': str(e)})
-                return Response({
-                    'message': 'Failed to reset password. Please try again.',
-                    'errors': ['An unexpected error occurred']
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return handle_exception(
+                    exception=e,
+                    default_message='Failed to reset password. Please try again.'
+                )
         
-        return Response({
-            'message': 'Password reset failed',
-            'errors': serializer.errors
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return APIValidationError.create_from_serializer(serializer)
 
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
@@ -763,10 +811,10 @@ class CSRFTokenView(views.APIView):
         """Return CSRF token"""
         # The @ensure_csrf_cookie decorator ensures the CSRF cookie is set
         csrf_token = get_token(request)
-        return Response({
-            'csrf_token': csrf_token,
-            'message': 'CSRF token generated successfully'
-        }, status=status.HTTP_200_OK)
+        return APISuccess.create(
+            data={'csrf_token': csrf_token},
+            message='CSRF token generated successfully'
+        )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -816,17 +864,21 @@ class UserSessionsView(views.APIView):
                     'is_expired': session.is_expired()
                 })
             
-            return Response({
-                'sessions': sessions_data,
-                'current_session_id': current_session_id,
-                'total_count': len(sessions_data)
-            }, status=status.HTTP_200_OK)
+            return APISuccess.create(
+                data={
+                    'sessions': sessions_data,
+                    'current_session_id': current_session_id,
+                    'total_count': len(sessions_data)
+                },
+                message='Sessions retrieved successfully'
+            )
             
         except Exception as e:
             logger.error(f"Error retrieving sessions for user {request.user.email}: {str(e)}")
-            return Response({
-                'error': 'Failed to retrieve sessions'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='Failed to retrieve sessions'
+            )
 
 
 @method_decorator(csrf_exempt, name='dispatch') 
@@ -841,9 +893,10 @@ class RevokeSessionView(views.APIView):
         session_id = request.data.get('session_id')
         
         if not session_id:
-            return Response({
-                'error': 'Session ID is required'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return APIError.bad_request(
+                message='Session ID is required',
+                code=ErrorCodes.REQUIRED_FIELD_MISSING
+            )
         
         try:
             session = UserSession.objects.get(
@@ -867,21 +920,23 @@ class RevokeSessionView(views.APIView):
             # If user revoked their current session, they should be logged out
             is_current_session = session.is_current
             
-            return Response({
-                'message': 'Session revoked successfully',
-                'revoked_current_session': is_current_session
-            }, status=status.HTTP_200_OK)
+            return APISuccess.create(
+                data={'revoked_current_session': is_current_session},
+                message='Session revoked successfully'
+            )
             
         except UserSession.DoesNotExist:
-            return Response({
-                'error': 'Session not found or already revoked'
-            }, status=status.HTTP_404_NOT_FOUND)
+            return APIError.not_found(
+                message='Session not found or already revoked',
+                code=ErrorCodes.RESOURCE_NOT_FOUND
+            )
             
         except Exception as e:
             logger.error(f"Error revoking session {session_id} for user {request.user.email}: {str(e)}")
-            return Response({
-                'error': 'Failed to revoke session'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='Failed to revoke session'
+            )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -923,16 +978,17 @@ class RevokeAllSessionsView(views.APIView):
                 details={'action': 'revoke_all', 'revoked_count': revoked_count}
             )
             
-            return Response({
-                'message': f'Successfully revoked {revoked_count} sessions',
-                'revoked_count': revoked_count
-            }, status=status.HTTP_200_OK)
+            return APISuccess.create(
+                data={'revoked_count': revoked_count},
+                message=f'Successfully revoked {revoked_count} sessions'
+            )
             
         except Exception as e:
             logger.error(f"Error revoking all sessions for user {request.user.email}: {str(e)}")
-            return Response({
-                'error': 'Failed to revoke sessions'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='Failed to revoke sessions'
+            )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -968,13 +1024,17 @@ class SessionActivityView(views.APIView):
                     'details': event.details
                 })
             
-            return Response({
-                'events': events_data,
-                'total_count': len(events_data)
-            }, status=status.HTTP_200_OK)
+            return APISuccess.create(
+                data={
+                    'events': events_data,
+                    'total_count': len(events_data)
+                },
+                message='Session activity retrieved successfully'
+            )
             
         except Exception as e:
             logger.error(f"Error retrieving session activity for user {request.user.email}: {str(e)}")
-            return Response({
-                'error': 'Failed to retrieve session activity'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handle_exception(
+                exception=e,
+                default_message='Failed to retrieve session activity'
+            )

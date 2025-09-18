@@ -34,4 +34,7 @@ urlpatterns = [
     path('consent/<str:consent_id>/', views.update_consent, name='update_consent'),
     path('consent/revoke-all/', views.revoke_all_consents, name='revoke_all_consents'),
     path('consent-history/download/', views.download_consent_history, name='download_consent_history'),
+
+    # Debug endpoints (development)
+    path('debug/', views.PreferencesDebugView.as_view(), name='preferences_debug'),
 ]

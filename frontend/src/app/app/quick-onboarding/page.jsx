@@ -222,7 +222,7 @@ export default function QuickOnboardingPage() {
                 <p className="text-sm text-gray-500">
                   Want more detailed setup?{' '}
                   <button 
-                    onClick={() => router.push('/onboarding')}
+                    onClick={() => router.push('/app/onboarding')}
                     className="text-blue-600 hover:text-blue-700 underline"
                   >
                     Try full onboarding instead

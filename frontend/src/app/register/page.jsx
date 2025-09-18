@@ -91,7 +91,7 @@ const RegisterPage = () => {
       }).unwrap();
       
       toast.success('Registration successful! Welcome to Gradvy!');
-      router.push('/quick-onboarding');
+      router.push('/app/quick-onboarding');
     } catch (error) {
       const e = normalizeApiError(error);
       applyFieldErrorsToForm(e, setError);

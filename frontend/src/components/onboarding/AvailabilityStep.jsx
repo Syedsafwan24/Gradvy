@@ -146,6 +146,11 @@ const LANGUAGES = [
     flag: '🇺🇸'
   },
   {
+    id: 'hindi',
+    title: 'हिन्दी (Hindi)',
+    flag: '🇮🇳'
+  },
+  {
     id: 'spanish',
     title: 'Spanish',
     flag: '🇪🇸'
@@ -181,7 +186,7 @@ export default function AvailabilityStep({ data, onDataChange, onNext }) {
   const [selectedTime, setSelectedTime] = useState(data.time_availability || '');
   const [selectedPlatforms, setSelectedPlatforms] = useState(data.preferred_platforms || []);
   const [selectedContentTypes, setSelectedContentTypes] = useState(data.content_types || []);
-  const [selectedLanguages, setSelectedLanguages] = useState(data.language_preference || ['english']);
+  const [selectedLanguages, setSelectedLanguages] = useState(data.language_preference || ['english', 'hindi']);
   
   // Custom inputs for "Other" options
   const [customPlatform, setCustomPlatform] = useState(data.custom_platform || '');

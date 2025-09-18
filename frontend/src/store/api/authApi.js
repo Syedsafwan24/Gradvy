@@ -1,7 +1,7 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { setCredentials, logout, setAccessToken, updateUser } from '../slices/authSlice';
 import { getCSRFToken } from '../../lib/cookieUtils';
-import { normalizeApiError } from '../../utils/apiErrors';
+import { normalizeApiError, extractSuccessData, extractSuccessMessage, isSuccessResponse } from '../../utils/apiErrors';
 import { API_CONFIG } from '../../config/api';
 
 // Base query with automatic token handling and CSRF protection
@@ -130,14 +130,23 @@ export const authApi = createApi({
       async onQueryStarted(arg, { dispatch, queryFulfilled }) {
         try {
           const { data } = await queryFulfilled;
-          if (data.access && data.refresh) {
-            // Store tokens and user data
+
+          // Handle standardized response format
+          let responseData = data;
+          if (isSuccessResponse({ data })) {
+            responseData = extractSuccessData({ data });
+          }
+
+          // Extract tokens from standardized or legacy format
+          const tokens = {
+            access: responseData.access_token || responseData.access,
+            refresh: responseData.refresh_token || responseData.refresh
+          };
+
+          if (tokens.access && tokens.refresh) {
             dispatch(setCredentials({
-              user: data.user,
-              tokens: {
-                access: data.access,
-                refresh: data.refresh
-              }
+              user: responseData.user,
+              tokens
             }));
           }
         } catch (error) {
@@ -158,14 +167,23 @@ export const authApi = createApi({
       async onQueryStarted(arg, { dispatch, queryFulfilled }) {
         try {
           const { data } = await queryFulfilled;
-          if (data.access && data.refresh) {
-            // Store tokens and user data after successful registration
+
+          // Handle standardized response format
+          let responseData = data;
+          if (isSuccessResponse({ data })) {
+            responseData = extractSuccessData({ data });
+          }
+
+          // Extract tokens from standardized or legacy format
+          const tokens = {
+            access: responseData.access_token || responseData.access,
+            refresh: responseData.refresh_token || responseData.refresh
+          };
+
+          if (tokens.access && tokens.refresh) {
             dispatch(setCredentials({
-              user: data.user,
-              tokens: {
-                access: data.access,
-                refresh: data.refresh
-              }
+              user: responseData.user,
+              tokens
             }));
           }
         } catch (error) {
@@ -242,14 +260,23 @@ export const authApi = createApi({
       async onQueryStarted(arg, { dispatch, queryFulfilled }) {
         try {
           const { data } = await queryFulfilled;
-          if (data.access && data.refresh) {
-            // Store tokens and user data after successful MFA verification
+
+          // Handle standardized response format
+          let responseData = data;
+          if (isSuccessResponse({ data })) {
+            responseData = extractSuccessData({ data });
+          }
+
+          // Extract tokens from standardized or legacy format
+          const tokens = {
+            access: responseData.access_token || responseData.access,
+            refresh: responseData.refresh_token || responseData.refresh
+          };
+
+          if (tokens.access && tokens.refresh) {
             dispatch(setCredentials({
-              user: data.user,
-              tokens: {
-                access: data.access,
-                refresh: data.refresh
-              }
+              user: responseData.user,
+              tokens
             }));
           }
         } catch (error) {
