@@ -1,1345 +1,743 @@
 """
-MongoDB models for user preferences and personalization data.
-Uses MongoEngine for document modeling with validation.
+backend/core/apps/preferences/models.py
+Core user preferences and basic profile information
+Handles onboarding data and basic user preferences, references other domain apps
+RELEVANT FILES: analytics/models.py, social_integration/models.py, privacy_compliance/models.py, learning_content/models.py
 """
+
 from datetime import datetime, timedelta
-import uuid
 from typing import Dict, List, Any, Optional
 from mongoengine import (
-    Document, EmbeddedDocument, EmbeddedDocumentField, EmbeddedDocumentListField,
-    StringField, IntField, DateTimeField, ListField, 
-    DictField, FloatField, BooleanField, EmailField,
-    ValidationError, DoesNotExist
+    Document, EmbeddedDocument, EmbeddedDocumentField,
+    StringField, IntField, DateTimeField, ListField,
+    DictField, BooleanField, ValidationError, DoesNotExist
 )
-from mongoengine.queryset.visitor import Q
+from mongoengine.base import BaseField
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class CompatibleOnboardingStatusField(EmbeddedDocumentField):
+    """
+    Custom field that handles both old string format and new embedded document format
+    for onboarding_status. Provides automatic migration during document loading.
+    """
+
+    def __init__(self, document_type=None, **kwargs):
+        # We'll set the document_type after OnboardingStatus is defined
+        super().__init__(document_type or 'OnboardingStatus', **kwargs)
+
+    def to_python(self, value):
+        """Convert database value to Python object, handling both formats"""
+        if value is None:
+            return None
+
+        # If it's already an OnboardingStatus object, return as-is
+        if hasattr(value, '__class__') and value.__class__.__name__ == 'OnboardingStatus':
+            return value
+
+        # If it's a dictionary (standard MongoDB embedded document), let parent handle it
+        if isinstance(value, dict):
+            try:
+                return super().to_python(value)
+            except Exception as e:
+                logger.warning(f"Failed to load OnboardingStatus from dict: {e}")
+                # Fall through to create new object
+
+        # Handle old string format - auto-migrate to new format
+        if isinstance(value, str):
+            logger.info(f"🔄 Auto-migrating onboarding_status from string '{value}' to embedded document")
+            return self._migrate_string_to_embedded_document(value)
+
+        # Unknown format - create default
+        logger.warning(f"Unknown onboarding_status format: {type(value)} = {value}")
+        return self._create_default_onboarding_status()
+
+    def _migrate_string_to_embedded_document(self, string_value):
+        """Convert old string values to new OnboardingStatus embedded document"""
+        # Get OnboardingStatus class from the document_type
+        OnboardingStatus = self.document_type
+
+        # Map old string values to new structure
+        if string_value in ['full_completed', 'completed', 'quick_completed']:
+            return OnboardingStatus(
+                completed=True,
+                current_step='completed',
+                completed_steps=['welcome', 'basic_info', 'preferences', 'completed'],
+                started_at=datetime.utcnow() - timedelta(days=1),  # Estimate
+                completed_at=datetime.utcnow() - timedelta(hours=1),  # Estimate
+                total_steps=4,
+                completion_percentage=100,
+                source='web',
+                is_onboarded=True,
+                quick_onboarding_completed=True if string_value == 'quick_completed' else False
+            )
+        elif string_value in ['in_progress', 'partial']:
+            return OnboardingStatus(
+                completed=False,
+                current_step='basic_info',
+                completed_steps=['welcome'],
+                started_at=datetime.utcnow() - timedelta(hours=2),  # Estimate
+                total_steps=4,
+                completion_percentage=25,
+                source='web',
+                is_onboarded=False,
+                quick_onboarding_completed=False
+            )
+        else:  # 'not_started' or any other value
+            return OnboardingStatus(
+                completed=False,
+                current_step='welcome',
+                completed_steps=[],
+                started_at=datetime.utcnow(),
+                total_steps=4,
+                completion_percentage=0,
+                source='web',
+                is_onboarded=False,
+                quick_onboarding_completed=False
+            )
+
+    def _create_default_onboarding_status(self):
+        """Create a default OnboardingStatus for unknown formats"""
+        # Get OnboardingStatus class from the document_type
+        OnboardingStatus = self.document_type
+
+        return OnboardingStatus(
+            completed=False,
+            current_step='welcome',
+            completed_steps=[],
+            started_at=datetime.utcnow(),
+            total_steps=4,
+            completion_percentage=0,
+            source='web',
+            is_onboarded=False,
+            quick_onboarding_completed=False
+        )
+
+    def to_mongo(self, value):
+        """Convert Python object to MongoDB storage format"""
+        if value is None:
+            return None
+
+        # If it's a string (old format), convert it first
+        if isinstance(value, str):
+            value = self._migrate_string_to_embedded_document(value)
+
+        # Now convert to MongoDB format
+        return super().to_mongo(value)
 
 
 class BasicInfo(EmbeddedDocument):
     """User's basic learning preferences from onboarding"""
-    
+
     # Learning goals - what they want to learn
     learning_goals = ListField(StringField(max_length=50), default=list)
-    
+
     # Experience level
     EXPERIENCE_CHOICES = ['complete_beginner', 'some_basics', 'intermediate', 'advanced']
     experience_level = StringField(choices=EXPERIENCE_CHOICES)
-    
+
     # Learning pace preference
     PACE_CHOICES = ['slow', 'medium', 'fast']
     preferred_pace = StringField(choices=PACE_CHOICES)
-    
+
     # Time availability
     TIME_CHOICES = ['1-2hrs', '3-5hrs', '5+hrs']
     time_availability = StringField(choices=TIME_CHOICES)
-    
+
     # Learning style preferences
     STYLE_CHOICES = ['visual', 'hands_on', 'reading', 'videos', 'interactive']
     learning_style = ListField(StringField(choices=STYLE_CHOICES), default=list)
-    
+
     # Career stage
     CAREER_CHOICES = ['student', 'career_change', 'skill_upgrade', 'professional']
     career_stage = StringField(choices=CAREER_CHOICES)
-    
+
     # Target timeline
     TIMELINE_CHOICES = ['3months', '6months', '1year', 'flexible']
     target_timeline = StringField(choices=TIMELINE_CHOICES)
 
 
-class InteractionData(EmbeddedDocument):
-    """Individual user interaction record"""
-    
-    # Type of interaction
-    INTERACTION_TYPES = [
-        'course_click', 'quiz_attempt', 'video_watch', 'search',
-        'page_view', 'course_enroll', 'course_complete', 'bookmark',
-        'rating_given', 'review_written', 'course_abandoned',
-        'onboarding_started', 'onboarding_flow_completed'
-    ]
-    type = StringField(choices=INTERACTION_TYPES, required=True)
-    
-    # Interaction-specific data (flexible structure)
-    data = DictField(default=dict)
-    
-    # Timestamp of interaction
-    timestamp = DateTimeField(required=True, default=datetime.utcnow)
-    
-    # Context information
-    context = DictField(default=dict)
+class OnboardingStatus(EmbeddedDocument):
+    """Onboarding progress tracking"""
 
+    # Onboarding completion status
+    completed = BooleanField(default=False)
+    current_step = StringField(max_length=50, default='welcome')
+    completed_steps = ListField(StringField(max_length=50), default=list)
 
-class AIInsights(EmbeddedDocument):
-    """AI-generated insights about the user"""
-    
-    # Learning patterns discovered by AI
-    learning_patterns = DictField(default=dict)
-    
-    # Identified strength areas
-    strength_areas = ListField(StringField(max_length=100), default=list)
-    
-    # Areas that need improvement
-    improvement_areas = ListField(StringField(max_length=100), default=list)
-    
-    # AI-recommended learning paths
-    recommended_paths = ListField(DictField(), default=list)
-    
-    # When these insights were last updated
-    updated_at = DateTimeField(default=datetime.utcnow)
+    # Onboarding flow metadata
+    started_at = DateTimeField(default=datetime.utcnow)
+    completed_at = DateTimeField()
+    total_steps = IntField(default=5)
+    completion_percentage = IntField(min_value=0, max_value=100, default=0)
 
+    # Onboarding source tracking
+    source = StringField(max_length=50, default='web')  # web, mobile, invite, etc.
+    referrer = StringField(max_length=200)
 
-class ContentPreferences(EmbeddedDocument):
-    """User's content filtering preferences"""
-    
-    # Preferred learning platforms
-    PLATFORM_CHOICES = [
-        'udemy', 'coursera', 'youtube', 'edx', 'khan_academy',
-        'pluralsight', 'linkedin_learning', 'codecademy', 'freecodecamp',
-        'skillshare', 'masterclass', 'brilliant', 'datacamp', 'codewars',
-        'hackerrank', 'leetcode', 'udacity', 'treehouse', 'laracasts',
-        'egghead', 'frontend_masters', 'css_tricks', 'mdn_web_docs',
-        'w3schools', 'stackoverflow', 'github', 'medium', 'dev_to'
-    ]
-    preferred_platforms = ListField(StringField(choices=PLATFORM_CHOICES), default=list)
-    
-    # Content type preferences  
-    CONTENT_TYPES = ['video', 'article', 'interactive', 'quiz', 'project', 'book', 'podcast']
-    content_types = ListField(StringField(choices=CONTENT_TYPES), default=list)
-    
-    # Difficulty preference
-    DIFFICULTY_CHOICES = ['mixed', 'beginner', 'intermediate', 'advanced']
-    difficulty_preference = StringField(choices=DIFFICULTY_CHOICES, default='mixed')
-    
-    # Duration preference
-    DURATION_CHOICES = ['short', 'medium', 'long', 'mixed']
-    duration_preference = StringField(choices=DURATION_CHOICES, default='mixed')
-    
-    # Language preferences
-    language_preference = ListField(StringField(max_length=20), default=['english', 'hindi'])
-    
-    # Minimum instructor rating
-    instructor_ratings_min = FloatField(min_value=0.0, max_value=5.0, default=3.0)
-
-
-class SocialData(EmbeddedDocument):
-    """Social media and professional profile data"""
-    
-    # LinkedIn data
-    linkedin_profile = DictField(default=dict)
-    linkedin_connections = IntField(min_value=0, default=0)
-    professional_headline = StringField(max_length=200)
-    industry = StringField(max_length=100)
-    experience_years = IntField(min_value=0, default=0)
-    education = ListField(DictField(), default=list)
-    skills = ListField(StringField(max_length=50), default=list)
-    certifications = ListField(DictField(), default=list)
-    
-    # GitHub data
-    github_profile = DictField(default=dict)
-    github_repos = IntField(min_value=0, default=0)
-    github_followers = IntField(min_value=0, default=0)
-    programming_languages = ListField(StringField(max_length=30), default=list)
-    github_contributions = IntField(min_value=0, default=0)
-    
-    # Google data
-    google_profile = DictField(default=dict)
-    google_interests = ListField(StringField(max_length=50), default=list)
-    
-    # Social engagement metrics
-    social_learning_score = FloatField(min_value=0.0, max_value=1.0, default=0.0)
-    peer_connections = IntField(min_value=0, default=0)
-    mentor_relationships = ListField(StringField(max_length=100), default=list)
-    
-    # Data freshness
-    last_updated = DateTimeField(default=datetime.utcnow)
-    data_quality_score = FloatField(min_value=0.0, max_value=1.0, default=0.5)
-
-
-class BehavioralPatterns(EmbeddedDocument):
-    """Learning behavior analysis and patterns"""
-    
-    # Learning velocity metrics
-    learning_velocity = FloatField(default=0.0)  # concepts per hour
-    average_session_length = FloatField(default=0.0)  # minutes
-    daily_consistency_score = FloatField(min_value=0.0, max_value=1.0, default=0.0)
-    
-    # Engagement patterns
-    engagement_score = FloatField(min_value=0.0, max_value=1.0, default=0.0)
-    attention_span_minutes = FloatField(min_value=0.0, default=30.0)
-    peak_activity_hours = ListField(IntField(min_value=0, max_value=23), default=list)
-    preferred_session_duration = IntField(min_value=5, max_value=480, default=60)  # minutes
-    
-    # Content interaction patterns
-    preferred_content_types = ListField(StringField(max_length=50), default=list)
-    content_completion_rate = FloatField(min_value=0.0, max_value=1.0, default=0.0)
-    quiz_performance_trend = ListField(FloatField(), default=list)
-    video_watch_patterns = DictField(default=dict)  # playback speed, skip patterns, etc.
-    
-    # Learning difficulties and strengths
-    struggle_areas = ListField(StringField(max_length=100), default=list)
-    strength_areas = ListField(StringField(max_length=100), default=list)
-    help_seeking_frequency = FloatField(min_value=0.0, default=0.0)
-    
-    # Dropout risk analysis
-    dropout_risk_score = FloatField(min_value=0.0, max_value=1.0, default=0.0)
-    warning_signals = ListField(StringField(max_length=100), default=list)
-    intervention_history = ListField(DictField(), default=list)
-    
-    # Motivation and goal tracking
-    goal_completion_rate = FloatField(min_value=0.0, max_value=1.0, default=0.0)
-    motivation_trend = ListField(FloatField(min_value=0.0, max_value=1.0), default=list)
-    achievement_unlock_rate = FloatField(min_value=0.0, default=0.0)
-    
-    # Analysis metadata
-    pattern_confidence = FloatField(min_value=0.0, max_value=1.0, default=0.5)
-    last_analyzed = DateTimeField(default=datetime.utcnow)
-    data_points_count = IntField(min_value=0, default=0)
-
-
-class ConsentRecord(EmbeddedDocument):
-    """Individual consent tracking record"""
-
-    CONSENT_TYPES = [
-        'essential', 'analytics', 'personalization', 'marketing',
-        'social_data', 'behavioral_analysis', 'location_data',
-        'device_fingerprinting', 'third_party_sharing'
-    ]
-
-    # Unique identifier for the consent record (useful for UI updates)
-    record_id = StringField(max_length=64, default=lambda: uuid.uuid4().hex)
-
-    # Either a single type or multiple types recorded together
-    consent_type = StringField(choices=CONSENT_TYPES)
-    consent_types = ListField(StringField(choices=CONSENT_TYPES), default=list)
-
-    granted = BooleanField(default=False)
-    granted_at = DateTimeField()
-    updated_at = DateTimeField(default=datetime.utcnow)
-    expires_at = DateTimeField()  # Optional expiration
-
-    # Consent source and method
-    consent_method = StringField(max_length=50, default='explicit')  # explicit, implicit, updated
-    ip_address = StringField(max_length=45)  # IPv4 or IPv6
-    user_agent = StringField(max_length=500)
-
-    # Legal basis under GDPR
-    LEGAL_BASIS_CHOICES = ['consent', 'contract', 'legal_obligation', 'vital_interests', 'public_task', 'legitimate_interests']
-    legal_basis = StringField(choices=LEGAL_BASIS_CHOICES, default='consent')
-
-    # Additional metadata
-    consent_version = StringField(max_length=20, default='1.0')
-    withdrawal_reason = StringField(max_length=200)
-
-
-class PrivacySettings(EmbeddedDocument):
-    """User privacy preferences and settings"""
-    
-    # Data collection consent levels
-    consent_records = EmbeddedDocumentListField(ConsentRecord, default=list)
-    
-    # Global privacy level
-    PRIVACY_LEVELS = ['minimal', 'balanced', 'full']
-    privacy_level = StringField(choices=PRIVACY_LEVELS, default='balanced')
-    
-    # Specific data collection settings
-    allow_analytics = BooleanField(default=True)
-    allow_personalization = BooleanField(default=True)
-    allow_marketing = BooleanField(default=False)
-    allow_social_data_collection = BooleanField(default=False)
-    allow_behavioral_analysis = BooleanField(default=True)
-    allow_location_tracking = BooleanField(default=False)
-    allow_device_fingerprinting = BooleanField(default=True)
-    allow_third_party_sharing = BooleanField(default=False)
-    
-    # Data retention preferences
-    data_retention_months = IntField(min_value=1, max_value=60, default=24)
-    auto_delete_inactive = BooleanField(default=True)
-    delete_after_months = IntField(min_value=6, max_value=84, default=36)
-    
-    # Communication preferences
-    email_notifications = BooleanField(default=True)
-    sms_notifications = BooleanField(default=False)
-    push_notifications = BooleanField(default=True)
-    marketing_emails = BooleanField(default=False)
-    
-    # Data export and portability
-    last_data_export = DateTimeField()
-    export_format_preference = StringField(max_length=20, default='json')
-    
-    # Privacy control metadata
-    data_minimization = BooleanField(default=True)
-    pseudonymization_enabled = BooleanField(default=True)
-    encryption_required = BooleanField(default=True)
-    
-    # GDPR compliance tracking
-    gdpr_consent_date = DateTimeField()
-    privacy_policy_version = StringField(max_length=20, default='1.0')
-    terms_accepted_version = StringField(max_length=20, default='1.0')
-    
-    # Settings metadata
-    last_updated = DateTimeField(default=datetime.utcnow)
-    updated_by_user = BooleanField(default=True)
-
-
-class ExternalDataSource(EmbeddedDocument):
-    """External platform integration data"""
-    
-    PLATFORM_TYPES = [
-        'linkedin', 'github', 'google', 'facebook', 'twitter', 
-        'stackoverflow', 'medium', 'youtube', 'coursera', 'udemy'
-    ]
-    
-    platform = StringField(choices=PLATFORM_TYPES, required=True)
-    platform_user_id = StringField(max_length=200)
-    platform_username = StringField(max_length=100)
-    
-    # Connection status
-    connected = BooleanField(default=False)
-    connection_date = DateTimeField()
-    last_sync = DateTimeField()
-    
-    # OAuth tokens (encrypted)
-    access_token_hash = StringField(max_length=500)  # Hashed for security
-    refresh_token_hash = StringField(max_length=500)
-    token_expires_at = DateTimeField()
-    
-    # Data collection permissions
-    permissions_granted = ListField(StringField(max_length=50), default=list)
-    data_types_collected = ListField(StringField(max_length=50), default=list)
-    
-    # Sync status and metrics
-    sync_frequency_hours = IntField(min_value=1, max_value=168, default=24)
-    successful_syncs = IntField(min_value=0, default=0)
-    failed_syncs = IntField(min_value=0, default=0)
-    last_sync_status = StringField(max_length=50, default='pending')
-    
-    # Collected data summary
-    data_points_collected = IntField(min_value=0, default=0)
-    data_quality_score = FloatField(min_value=0.0, max_value=1.0, default=0.5)
-    
-    # Privacy and consent
-    data_collection_consent = BooleanField(default=True)
-    data_sharing_consent = BooleanField(default=False)
-    retention_period_months = IntField(min_value=1, max_value=60, default=24)
-    
-    # Metadata
-    created_at = DateTimeField(default=datetime.utcnow)
-    updated_at = DateTimeField(default=datetime.utcnow)
-
-
-class DeviceUsagePattern(EmbeddedDocument):
-    """Device fingerprinting and usage pattern tracking"""
-    
-    # Device identification
-    device_fingerprint = StringField(max_length=200)  # Hashed fingerprint
-    device_type = StringField(max_length=20)  # desktop, mobile, tablet
-    
-    # Browser and OS information
-    browser = StringField(max_length=50)
-    browser_version = StringField(max_length=20)
-    operating_system = StringField(max_length=50)
-    os_version = StringField(max_length=20)
-    
-    # Screen and hardware info
-    screen_resolution = StringField(max_length=20)  # e.g., "1920x1080"
-    color_depth = IntField(min_value=1, max_value=64, default=24)
-    timezone_offset = IntField(min_value=-12, max_value=14, default=0)
-    
-    # Usage patterns
-    session_count = IntField(min_value=0, default=0)
-    total_time_minutes = FloatField(min_value=0.0, default=0.0)
-    average_session_length = FloatField(min_value=0.0, default=0.0)
-    
-    # Interaction patterns
-    click_patterns = DictField(default=dict)  # click frequency, locations, etc.
-    scroll_patterns = DictField(default=dict)  # scroll speed, distance, etc.
-    keyboard_patterns = DictField(default=dict)  # typing speed, patterns
-    
-    # Performance metrics
-    page_load_times = ListField(FloatField(), default=list)
-    interaction_delays = ListField(FloatField(), default=list)
-    error_frequency = FloatField(min_value=0.0, default=0.0)
-    
-    # Security and fraud detection
-    suspicious_activity_score = FloatField(min_value=0.0, max_value=1.0, default=0.0)
-    bot_probability = FloatField(min_value=0.0, max_value=1.0, default=0.0)
-    proxy_detection = BooleanField(default=False)
-    
-    # Location approximation (privacy-safe)
-    country_code = StringField(max_length=2)
-    city_hash = StringField(max_length=200)  # Hashed for privacy
-    isp_hash = StringField(max_length=200)  # Hashed ISP info
-    
-    # Tracking metadata
-    first_seen = DateTimeField(default=datetime.utcnow)
-    last_seen = DateTimeField(default=datetime.utcnow)
-    data_collection_consent = BooleanField(default=True)
-
-
-class LocationRecord(EmbeddedDocument):
-    """Privacy-compliant location data for personalization"""
-    
-    # Coarse location (GDPR compliant)
-    country_code = StringField(max_length=2)
-    region_code = StringField(max_length=10)  # state/province
-    city_name = StringField(max_length=100)
-    timezone = StringField(max_length=50)
-    
-    # Coordinates (if explicitly consented, rounded for privacy)
-    latitude_rounded = FloatField()  # Rounded to ~1km precision
-    longitude_rounded = FloatField()  # Rounded to ~1km precision
-    
-    # Usage context
-    location_type = StringField(max_length=20, default='home')  # home, work, travel, etc.
-    usage_frequency = IntField(min_value=0, default=1)
-    
-    # Learning context
-    preferred_content_languages = ListField(StringField(max_length=10), default=list)
-    local_time_preferences = DictField(default=dict)  # preferred learning hours
-    
-    # Privacy controls
-    precision_level = StringField(max_length=20, default='city')  # city, region, country
-    sharing_consent = BooleanField(default=False)
-    retention_days = IntField(min_value=1, max_value=365, default=90)
-    
-    # Collection metadata
-    collected_at = DateTimeField(default=datetime.utcnow)
-    collection_method = StringField(max_length=50)  # ip_geolocation, gps, manual
-    accuracy_meters = FloatField(min_value=0.0)  # GPS accuracy if applicable
-    
-    # Compliance and consent
-    gdpr_lawful_basis = StringField(max_length=50, default='consent')
-    explicit_consent = BooleanField(default=False)
-    consent_timestamp = DateTimeField()
+    # Legacy support - remove after migration
+    is_onboarded = BooleanField(default=False)
+    quick_onboarding_completed = BooleanField(default=False)
 
 
 class UserPreference(Document):
     """
-    Main user preference document storing all personalization data.
-    Links to Django User model via user_id.
+    Simplified user preference document for core preferences only.
+    Links to domain-specific models in other apps via user_id.
+
+    Domain Model Relationships (via user_id):
+    - UserAnalytics (analytics app) - behavioral tracking and insights
+    - SocialProfile (social_integration app) - social media integrations
+    - UserPrivacy (privacy_compliance app) - GDPR compliance and consent
+    - UserContentProfile (learning_content app) - course recommendations and content
     """
-    
+
     # Link to Django User model
     user_id = IntField(required=True, unique=True)
-    
+
     # Timestamps
     created_at = DateTimeField(required=True, default=datetime.utcnow)
     updated_at = DateTimeField(required=True, default=datetime.utcnow)
-    
-    # Embedded documents for structured data
+
+    # Core preference data (kept in this app)
     basic_info = EmbeddedDocumentField(BasicInfo)
-    content_preferences = EmbeddedDocumentField(ContentPreferences)
-    ai_insights = EmbeddedDocumentField(AIInsights)
-    
-    # User interactions array
-    interactions = EmbeddedDocumentListField(InteractionData, default=list)
-    
-    # Enhanced personalization data
-    social_data = EmbeddedDocumentField(SocialData)
-    behavioral_patterns = EmbeddedDocumentField(BehavioralPatterns)
-    
-    # Privacy and consent management
-    privacy_settings = EmbeddedDocumentField(PrivacySettings)
-    consent_history = EmbeddedDocumentListField(ConsentRecord, default=list)
-    
-    # External data integration
-    external_data_sources = EmbeddedDocumentListField(ExternalDataSource, default=list)
-    
-    # Device and context tracking
-    device_patterns = EmbeddedDocumentListField(DeviceUsagePattern, default=list)
-    location_history = EmbeddedDocumentListField(LocationRecord, default=list)
-    
-    # Additional flexible data
-    custom_preferences = DictField(default=dict)
-    feature_flags = DictField(default=dict)  # For A/B testing and gradual rollouts
-    
-    # Onboarding Status Tracking (unified approach)
-    ONBOARDING_STATUS_CHOICES = ['not_started', 'quick_completed', 'full_completed']
-    onboarding_status = StringField(choices=ONBOARDING_STATUS_CHOICES, default='not_started')
-    profile_completion_percentage = FloatField(min_value=0.0, max_value=100.0, default=0.0)
-    onboarding_completed_at = DateTimeField()
-    last_completion_prompt_shown = DateTimeField()
-    completion_prompt_dismissed_count = IntField(default=0)
-    
-    # Quick onboarding data storage
-    quick_onboarding_data = DictField(default=dict)
+    onboarding_status = CompatibleOnboardingStatusField(OnboardingStatus)
 
-    # =================================================================
-    # BACKWARD COMPATIBILITY FIELDS (Legacy document support)
-    # =================================================================
-    # NOTE: These fields exist in legacy MongoDB documents but are now handled via properties.
-    # They are defined here to prevent MongoEngine from failing when loading old documents.
-    # The actual values should be computed via the @property methods below.
-    # TODO: Remove these fields after migrating all legacy documents to use onboarding_status
+    # User profile metadata
+    profile_completeness = IntField(min_value=0, max_value=100, default=0)
+    last_active = DateTimeField(default=datetime.utcnow)
 
-    _legacy_onboarding_completed = BooleanField(
-        db_field='onboarding_completed',
-        default=None,
-        null=True,
-        help_text="DEPRECATED: Legacy field for backward compatibility. Use onboarding_status property instead."
-    )
+    # Feature flags and configurations
+    feature_flags = DictField(default=dict)
+    ui_preferences = DictField(default=dict)  # theme, language, etc.
 
-    _legacy_quick_onboarding_completed = BooleanField(
-        db_field='quick_onboarding_completed',
-        default=None,
-        null=True,
-        help_text="DEPRECATED: Legacy field for backward compatibility. Use onboarding_status property instead."
-    )
+    # ========================================
+    # LEGACY FIELDS FOR BACKWARD COMPATIBILITY
+    # ========================================
+    # These fields exist in old MongoDB documents but are now handled by domain models
+    # or compatibility properties. Keeping them to prevent FieldDoesNotExist errors.
 
-    # Gamification elements
-    achievement_badges = ListField(StringField(max_length=50), default=list)
-    completion_milestones = DictField(default=dict)
-    streak_data = DictField(default=dict)
-    
-    # Metadata with comprehensive indexing strategy
+    # Legacy onboarding fields (now handled by onboarding_status embedded doc)
+    onboarding_completed = BooleanField(default=False)  # Legacy - use onboarding_status.completed
+    quick_onboarding_completed = BooleanField(default=False)  # Legacy
+    onboarding_completed_at = DateTimeField()  # Legacy
+    quick_onboarding_data = DictField(default=dict)  # Legacy
+    completion_prompt_dismissed_count = IntField(default=0)  # Legacy
+    completion_milestones = DictField(default=dict)  # Legacy
+    profile_completion_percentage = IntField(min_value=0, max_value=100, default=0)  # Legacy - use profile_completeness
+
+    # Legacy analytics fields (now handled by analytics domain)
+    interactions = ListField(default=list)  # Legacy - now in UserAnalytics
+    streak_data = DictField(default=dict)  # Legacy
+    achievement_badges = ListField(default=list)  # Legacy
+
+    # Legacy privacy fields (now handled by privacy_compliance domain)
+    consent_history = ListField(default=list)  # Legacy - now in UserPrivacy
+
+    # Legacy content fields (now handled by learning_content domain)
+    _legacy_content_preferences = DictField(default=dict, db_field='content_preferences')  # Legacy - now in UserContentProfile
+
+    # Legacy social fields (now handled by social_integration domain)
+    external_data_sources = ListField(default=list)  # Legacy - now in SocialProfile
+
+    # Legacy device/location fields (now handled by analytics domain)
+    device_patterns = ListField(default=list)  # Legacy - now in UserAnalytics
+    location_history = ListField(default=list)  # Legacy - now in UserAnalytics
+
+    # Legacy custom preferences (now stored in ui_preferences)
+    custom_preferences = DictField(default=dict)  # Legacy - merged into ui_preferences
+
     meta = {
         'collection': 'user_preferences',
         'indexes': [
-            # Primary indexes
             'user_id',
             '-updated_at',
-            
-            # Basic info indexes
-            'basic_info.learning_goals',
+            '-last_active',
+            'onboarding_status.completed',
             'basic_info.experience_level',
-            ('basic_info.experience_level', 'basic_info.learning_goals'),
-            
-            # Interaction indexes
-            'interactions.timestamp',
-            'interactions.type',
-            ('user_id', '-interactions.timestamp'),
-            
-            # Behavioral pattern indexes
-            'behavioral_patterns.engagement_score',
-            'behavioral_patterns.dropout_risk_score',
-            'behavioral_patterns.preferred_content_types',
-            
-            # Privacy and consent indexes
-            'privacy_settings.allow_personalization',
-            'privacy_settings.allow_behavioral_analysis',
-            'consent_history.granted_at',
-            
-            # External data indexes
-            'external_data_sources.platform',
-            'external_data_sources.last_sync',
-            
-            # Device and location indexes
-            'device_patterns.device_type',
-            'location_history.country_code',
-            
-            # AI insights indexes
-            'ai_insights.updated_at',
-            
-            # Compound indexes for complex queries
-            ('basic_info.learning_goals', 'behavioral_patterns.engagement_score'),
-            ('privacy_settings.allow_personalization', 'behavioral_patterns.dropout_risk_score'),
-            
-            # Text search index - requires proper setup
-            # ('basic_info.learning_goals', 'text'),  # Commented out - needs proper text index setup
-            
-            # TTL indexes for data retention
-            # ('interactions.timestamp', {'expireAfterSeconds': 31536000}),  # 1 year - commented out for now
-            # ('external_data_sources.expires_at', 1, {'expireAfterSeconds': 0}),  # Commented out - no expires_at field
+            'basic_info.learning_goals',
         ]
     }
-    
+
     def save(self, *args, **kwargs):
-        """Override save to update timestamp and completion percentage"""
-        import logging
-        logger = logging.getLogger(__name__)
-
-        # Enhanced debug logging for MongoDB operations
-        logger.debug(f"💾 MONGODB SAVE START - User {self.user_id}")
-        logger.debug(f"🔍 Save operation details: args={args}, kwargs={kwargs}")
-
+        """Override save to update timestamp and calculate completeness"""
         self.updated_at = datetime.utcnow()
+        self._calculate_profile_completeness()
+        return super().save(*args, **kwargs)
 
-        # Always recalculate completion percentage before saving
-        old_percentage = getattr(self, 'profile_completion_percentage', None)
-        new_percentage = self.calculate_profile_completion()
-        self.profile_completion_percentage = new_percentage
+    def _calculate_profile_completeness(self):
+        """Calculate profile completeness percentage"""
+        completeness = 0
 
-        logger.debug(f"📊 Completion percentage: {old_percentage} → {new_percentage}")
-        logger.debug(f"🔍 Basic info exists: {bool(self.basic_info)}")
-        logger.debug(f"🔍 Content prefs exists: {bool(self.content_preferences)}")
-        logger.debug(f"🏷️  Onboarding status: {self.onboarding_status}")
-
-        # Log significant completion percentage changes
-        if old_percentage is not None and abs(new_percentage - old_percentage) >= 5.0:
-            logger.info(f"📈 Profile completion updated for user {self.user_id}: {old_percentage:.1f}% → {new_percentage:.1f}%")
-
-        try:
-            logger.debug(f"🔄 Executing MongoDB save operation for user {self.user_id}")
-            result = super().save(*args, **kwargs)
-            logger.info(f"✅ MONGODB SAVE SUCCESS - User {self.user_id} preferences saved to database")
-            return result
-        except Exception as e:
-            logger.error(f"❌ MONGODB SAVE FAILED - User {self.user_id}: {str(e)}")
-            logger.error(f"🔍 Exception type: {type(e).__name__}")
-            raise
-    
-    def add_interaction(self, interaction_type: str, data: Dict[str, Any], context: Dict[str, Any] = None):
-        """Add a new interaction to the user's history with enhanced privacy-aware tracking"""
-
-        # TEMPORARY FIX: Filter interaction types to match MongoDB schema validation
-        # TODO: Update MongoDB schema to include all INTERACTION_TYPES
-        mongodb_allowed_types = [
-            'course_click', 'quiz_attempt', 'video_watch', 'search', 'page_view',
-            'course_enroll', 'course_complete'
-        ]
-
-        if interaction_type not in mongodb_allowed_types:
-            # Log the filtered interaction but don't save to avoid validation errors
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Skipping interaction type '{interaction_type}' due to MongoDB schema validation. "
-                         f"Allowed types: {mongodb_allowed_types}")
-            return
-
-        # Check privacy consent before storing detailed interaction data
-        if not self.privacy_settings or not self.privacy_settings.allow_analytics:
-            # Store minimal interaction data without detailed tracking
-            data = {'type': interaction_type, 'timestamp': datetime.utcnow().isoformat()}
-            context = {'consent_limited': True}
-
-        interaction = InteractionData(
-            type=interaction_type,
-            data=data,
-            context=context or {},
-            timestamp=datetime.utcnow()
-        )
-        self.interactions.append(interaction)
-
-        # Update behavioral patterns if consent given
-        if self.privacy_settings and self.privacy_settings.allow_behavioral_analysis:
-            self._update_behavioral_patterns_from_interaction(interaction)
-
-        self.save()
-    
-    def get_recent_interactions(self, days: int = 30, interaction_type: str = None) -> List[InteractionData]:
-        """Get recent interactions, optionally filtered by type"""
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
-        
-        recent = [
-            interaction for interaction in self.interactions
-            if interaction.timestamp > cutoff_date
-        ]
-        
-        if interaction_type:
-            recent = [i for i in recent if i.type == interaction_type]
-        
-        return sorted(recent, key=lambda x: x.timestamp, reverse=True)
-    
-    def update_ai_insights(self, insights: Dict[str, Any]):
-        """Update AI-generated insights with privacy checks"""
-        # Check if user consented to AI insights
-        if not self.privacy_settings or not self.privacy_settings.allow_personalization:
-            return
-        
-        if not self.ai_insights:
-            self.ai_insights = AIInsights()
-        
-        for key, value in insights.items():
-            if hasattr(self.ai_insights, key):
-                setattr(self.ai_insights, key, value)
-        
-        self.ai_insights.updated_at = datetime.utcnow()
-        self.save()
-    
-    def calculate_profile_completion(self) -> float:
-        """Calculate profile completion percentage based on filled fields and onboarding status"""
-        completion_score = 0.0
-        
-        # Basic Info (40% weight)
+        # Basic info completeness (60% weight)
         if self.basic_info:
-            basic_score = 0
             basic_fields = [
-                'learning_goals', 'experience_level', 'preferred_pace', 
-                'time_availability', 'learning_style', 'career_stage', 'target_timeline'
+                self.basic_info.learning_goals,
+                self.basic_info.experience_level,
+                self.basic_info.preferred_pace,
+                self.basic_info.time_availability,
+                self.basic_info.learning_style,
+                self.basic_info.career_stage,
+                self.basic_info.target_timeline
             ]
-            for field in basic_fields:
-                field_value = getattr(self.basic_info, field, None)
-                if field_value and (not isinstance(field_value, list) or len(field_value) > 0):
-                    basic_score += 1
-            completion_score += (basic_score / len(basic_fields)) * 40
-        
-        # Content Preferences (35% weight)
-        if self.content_preferences:
-            content_score = 0
-            content_fields = [
-                'preferred_platforms', 'content_types', 'difficulty_preference',
-                'duration_preference', 'language_preference'
-            ]
-            for field in content_fields:
-                field_value = getattr(self.content_preferences, field, None)
-                if field_value and (not isinstance(field_value, list) or len(field_value) > 0):
-                    content_score += 1
-            completion_score += (content_score / len(content_fields)) * 35
-        
-        # Onboarding Status (15% weight)
-        if self.onboarding_status == 'quick_completed':
-            completion_score += 10  # Partial points for quick onboarding
-        elif self.onboarding_status == 'full_completed':
-            completion_score += 15  # Full points for complete onboarding
-        
-        # Profile activity (10% weight)
-        if len(self.interactions) > 0:
-            completion_score += 10
-        
-        return min(completion_score, 100.0)
-    
-    def update_completion_percentage(self, save_now=False):
-        """Update the stored completion percentage
+            filled_basic = sum(1 for field in basic_fields if field)
+            completeness += (filled_basic / len(basic_fields)) * 60
 
-        Args:
-            save_now (bool): If True, saves immediately. If False, caller is responsible for saving.
-                           Default is False to avoid double calculation since save() auto-calculates.
+        # Onboarding completion (40% weight)
+        if self.onboarding_status and self.onboarding_status.completed:
+            completeness += 40
+
+        self.profile_completeness = int(completeness)
+
+    def update_completion_percentage(self):
         """
-        if save_now:
-            # Force recalculation and save immediately
-            self.profile_completion_percentage = self.calculate_profile_completion()
-            self.save()
-        else:
-            # Just mark for recalculation - save() will handle the calculation
-            # This avoids double calculation since save() always recalculates
-            pass
-    
-    def mark_onboarding_completed(self, onboarding_type='full'):
-        """Mark onboarding as completed and update completion time"""
-        if onboarding_type == 'quick':
-            self.onboarding_status = 'quick_completed'
-        else:
-            self.onboarding_status = 'full_completed'
-        self.onboarding_completed_at = datetime.utcnow()
-        # Don't call update_completion_percentage() here - let the caller handle saving
-        # The save() method will automatically recalculate completion percentage
-    
-    def add_achievement_badge(self, badge_name: str):
-        """Add an achievement badge to user's collection"""
-        if badge_name not in self.achievement_badges:
-            self.achievement_badges.append(badge_name)
-            self.save()
-    
-    def should_show_completion_prompt(self, hours_interval: int = 24) -> bool:
-        """Check if we should show completion prompt based on onboarding status and dismissal count"""
-        # Don't show prompts if onboarding is fully completed
-        if self.onboarding_status == 'full_completed':
-            return False
-        
-        # Don't show prompts if profile is sufficiently complete
-        if self.profile_completion_percentage >= 80.0:
-            return False
-        
-        if self.completion_prompt_dismissed_count >= 3:
-            return False
-        
-        if not self.last_completion_prompt_shown:
-            return True
-        
-        time_diff = datetime.utcnow() - self.last_completion_prompt_shown
-        return time_diff.total_seconds() > (hours_interval * 3600)
-    
-    def dismiss_completion_prompt(self):
-        """Record that user dismissed the completion prompt"""
-        self.last_completion_prompt_shown = datetime.utcnow()
-        self.completion_prompt_dismissed_count += 1
+        Public method to update profile completion percentage.
+        This method is called by views after preference updates.
+        """
+        self._calculate_profile_completeness()
+
+    def complete_onboarding_step(self, step_name: str):
+        """Mark an onboarding step as completed"""
+        if not self.onboarding_status:
+            self.onboarding_status = OnboardingStatus()
+
+        if step_name not in self.onboarding_status.completed_steps:
+            self.onboarding_status.completed_steps.append(step_name)
+
+        # Calculate completion percentage
+        total_steps = self.onboarding_status.total_steps
+        completed_count = len(self.onboarding_status.completed_steps)
+        self.onboarding_status.completion_percentage = int((completed_count / total_steps) * 100)
+
+        # Mark as completed if all steps done
+        if completed_count >= total_steps:
+            self.onboarding_status.completed = True
+            self.onboarding_status.completed_at = datetime.utcnow()
+            self.onboarding_status.is_onboarded = True  # Legacy support
+
         self.save()
-    
+
+    def update_basic_info(self, info_data: Dict[str, Any]):
+        """Update basic info from onboarding or profile editing"""
+        if not self.basic_info:
+            self.basic_info = BasicInfo()
+
+        # Update fields that are provided
+        for field_name, value in info_data.items():
+            if hasattr(self.basic_info, field_name):
+                setattr(self.basic_info, field_name, value)
+
+        self.save()
+
+    def get_related_domain_data(self) -> Dict[str, bool]:
+        """
+        Check which domain models exist for this user.
+        Returns dict of domain -> exists mapping.
+        """
+        from apps.analytics.models import UserAnalytics
+        from apps.social_integration.models import SocialProfile
+        from apps.privacy_compliance.models import UserPrivacy
+        from apps.learning_content.models import UserContentProfile
+
+        return {
+            'analytics': UserAnalytics.get_by_user_id(self.user_id) is not None,
+            'social': SocialProfile.get_by_user_id(self.user_id) is not None,
+            'privacy': UserPrivacy.get_by_user_id(self.user_id) is not None,
+            'content': UserContentProfile.get_by_user_id(self.user_id) is not None,
+        }
+
+    def initialize_domain_models(self):
+        """
+        Initialize related domain models if they don't exist.
+        Called after user registration or onboarding completion.
+        """
+        from apps.analytics.models import UserAnalytics
+        from apps.social_integration.models import SocialProfile
+        from apps.privacy_compliance.models import UserPrivacy
+        from apps.learning_content.models import UserContentProfile
+
+        # Initialize analytics tracking
+        if not UserAnalytics.get_by_user_id(self.user_id):
+            UserAnalytics.create_for_user(self.user_id)
+
+        # Initialize privacy settings with default consent
+        if not UserPrivacy.get_by_user_id(self.user_id):
+            UserPrivacy.create_for_user(
+                self.user_id,
+                initial_consents=['essential', 'analytics', 'personalization']
+            )
+
+        # Initialize content profile with basic preferences
+        if not UserContentProfile.get_by_user_id(self.user_id):
+            content_prefs = {}
+            if self.basic_info:
+                content_prefs = {
+                    'difficulty_preference': self._map_experience_to_difficulty(),
+                    'duration_preference': self._map_time_to_duration(),
+                }
+            UserContentProfile.create_for_user(self.user_id, content_prefs)
+
+        # Social profile is created only when user connects external accounts
+        # so we don't initialize it by default
+
+    def _map_experience_to_difficulty(self) -> str:
+        """Map experience level to content difficulty preference"""
+        if not self.basic_info or not self.basic_info.experience_level:
+            return 'mixed'
+
+        mapping = {
+            'complete_beginner': 'beginner',
+            'some_basics': 'beginner',
+            'intermediate': 'intermediate',
+            'advanced': 'advanced'
+        }
+        return mapping.get(self.basic_info.experience_level, 'mixed')
+
+    def _map_time_to_duration(self) -> str:
+        """Map time availability to content duration preference"""
+        if not self.basic_info or not self.basic_info.time_availability:
+            return 'mixed'
+
+        mapping = {
+            '1-2hrs': 'short',
+            '3-5hrs': 'medium',
+            '5+hrs': 'long'
+        }
+        return mapping.get(self.basic_info.time_availability, 'mixed')
+
+    def update_last_active(self):
+        """Update last active timestamp"""
+        self.last_active = datetime.utcnow()
+        self.save()
+
+    def set_feature_flag(self, flag_name: str, enabled: bool):
+        """Set a feature flag for this user"""
+        self.feature_flags[flag_name] = enabled
+        self.save()
+
+    def is_feature_enabled(self, flag_name: str) -> bool:
+        """Check if a feature flag is enabled for this user"""
+        return self.feature_flags.get(flag_name, False)
+
+    def get_profile_summary(self) -> Dict[str, Any]:
+        """Get a summary of user's profile and preferences"""
+        summary = {
+            'user_id': self.user_id,
+            'profile_completeness': self.profile_completeness,
+            'onboarding_completed': self.onboarding_status.completed if self.onboarding_status else False,
+            'last_active': self.last_active,
+            'created_at': self.created_at,
+        }
+
+        if self.basic_info:
+            summary.update({
+                'learning_goals': self.basic_info.learning_goals,
+                'experience_level': self.basic_info.experience_level,
+                'preferred_pace': self.basic_info.preferred_pace,
+                'career_stage': self.basic_info.career_stage,
+                'target_timeline': self.basic_info.target_timeline,
+            })
+
+        # Add domain model status
+        summary['domain_models'] = self.get_related_domain_data()
+
+        return summary
+
     @classmethod
     def get_by_user_id(cls, user_id: int) -> Optional['UserPreference']:
         """Get user preferences by Django user ID"""
-        import logging
-        logger = logging.getLogger(__name__)
-
-        logger.debug(f"🔍 MONGODB QUERY START - Getting preferences for user {user_id}")
-
         try:
-            result = cls.objects.get(user_id=user_id)
-            logger.info(f"✅ MONGODB QUERY SUCCESS - Found preferences for user {user_id}")
-            logger.debug(f"📊 Found completion: {result.profile_completion_percentage:.1f}%")
-            logger.debug(f"🏷️  Found onboarding status: {result.onboarding_status}")
-            logger.debug(f"🔍 Found basic info: {bool(result.basic_info)}")
-            logger.debug(f"🔍 Found content prefs: {bool(result.content_preferences)}")
-            return result
+            return cls.objects.get(user_id=user_id)
         except DoesNotExist:
-            logger.warning(f"❌ MONGODB QUERY - No preferences found for user {user_id}")
             return None
-        except Exception as e:
-            logger.error(f"❌ MONGODB QUERY FAILED - User {user_id}: {str(e)}")
-            logger.error(f"🔍 Exception type: {type(e).__name__}")
-            raise
-    
+
     @classmethod
-    def create_for_user(cls, user_id: int, basic_info: Dict[str, Any] = None) -> 'UserPreference':
-        """Create new user preference record"""
-        import logging
-        logger = logging.getLogger(__name__)
+    def create_for_user(cls, user_id: int, onboarding_data: Dict[str, Any] = None) -> 'UserPreference':
+        """Create new user preferences record"""
+        preferences = cls(user_id=user_id)
 
-        logger.debug(f"🆕 MONGODB CREATE START - Creating preferences for user {user_id}")
-        logger.debug(f"📋 Basic info provided: {bool(basic_info)}")
+        # Initialize onboarding status
+        preferences.onboarding_status = OnboardingStatus()
 
-        if basic_info:
-            logger.debug(f"📋 Basic info fields: {list(basic_info.keys())}")
+        # Add basic info if provided
+        if onboarding_data:
+            preferences.update_basic_info(onboarding_data)
 
-        preference = cls(user_id=user_id)
+        preferences.save()
+        return preferences
 
-        if basic_info:
-            try:
-                preference.basic_info = BasicInfo(**basic_info)
-                logger.debug(f"✅ Basic info created successfully")
-            except Exception as e:
-                logger.error(f"❌ Failed to create basic info: {str(e)}")
-                raise
+    # =========================================================================
+    # COMPATIBILITY METHODS - Delegate to Domain Models
+    # These methods maintain backward compatibility with existing code
+    # =========================================================================
 
-        preference.save()
-        logger.info(f"✅ MONGODB CREATE SUCCESS - User {user_id} preferences created")
-        return preference
-    
-    def record_consent(self, consent_types: List[str], ip_address: str = None, user_agent: str = None):
-        """Record user consent for GDPR compliance"""
-        consent_record = ConsentRecord(
-            consent_types=consent_types,
-            granted=True,
-            granted_at=datetime.utcnow(),
-            ip_address=ip_address,
-            user_agent=user_agent
-        )
-        
-        self.consent_history.append(consent_record)
-        
-        # Update privacy settings based on consent
-        if not self.privacy_settings:
-            self.privacy_settings = PrivacySettings()
-        
-        # Map consent types to privacy settings
-        consent_mapping = {
-            'analytics': 'allow_analytics',
-            'personalization': 'allow_personalization',
-            'marketing': 'allow_marketing',
-            'social_data': 'allow_social_data_collection',
-            'behavioral_analysis': 'allow_behavioral_analysis',
-            'third_party_sharing': 'allow_third_party_sharing',
-            'location_data': 'allow_location_tracking',
-            'device_fingerprinting': 'allow_device_fingerprinting',
-        }
-        
-        for consent_type in consent_types:
-            if consent_type in consent_mapping:
-                setattr(self.privacy_settings, consent_mapping[consent_type], True)
-        
-        self.privacy_settings.last_updated = datetime.utcnow()
-        self.save()
-
-    def record_consent_change(self, consent_type: str, granted: bool, ip_address: str = None,
-                              user_agent: str = None, consent_version: str = '1.0'):
-        """Record a change for a single consent type and update flags"""
-        change = ConsentRecord(
-            consent_type=consent_type,
-            consent_types=[consent_type],
-            granted=granted,
-            granted_at=datetime.utcnow() if granted else None,
-            updated_at=datetime.utcnow(),
-            ip_address=ip_address,
-            user_agent=user_agent,
-            consent_version=consent_version,
-        )
-
-        self.consent_history.append(change)
-
-        # Ensure privacy settings exists
-        if not self.privacy_settings:
-            self.privacy_settings = PrivacySettings()
-
-        # Map to setting field
-        mapping = {
-            'analytics': 'allow_analytics',
-            'personalization': 'allow_personalization',
-            'marketing': 'allow_marketing',
-            'social_data': 'allow_social_data_collection',
-            'behavioral_analysis': 'allow_behavioral_analysis',
-            'third_party_sharing': 'allow_third_party_sharing',
-            'location_data': 'allow_location_tracking',
-            'device_fingerprinting': 'allow_device_fingerprinting',
-        }
-        if consent_type in mapping:
-            setattr(self.privacy_settings, mapping[consent_type], granted)
-
-        self.privacy_settings.last_updated = datetime.utcnow()
-        self.save()
-    
-    def add_external_data(self, source_type: str, source_id: str, data_content: Dict[str, Any], 
-                         confidence_score: float = 0.5, expires_in_days: int = 30):
-        """Add external data source with privacy checks"""
-        if not self.privacy_settings or not self.privacy_settings.allow_third_party_sharing:
-            return False
-        
-        external_data = ExternalDataSource(
-            platform=source_type,
-            platform_user_id=source_id,
-            data_quality_score=confidence_score,
-            last_sync=datetime.utcnow(),
-            data_collection_consent=True
-        )
-        
-        # Remove existing data from same source
-        self.external_data_sources = [
-            source for source in self.external_data_sources 
-            if not (source.platform == source_type and source.platform_user_id == source_id)
-        ]
-        
-        self.external_data_sources.append(external_data)
-        self.save()
-        return True
-    
-    def update_device_pattern(self, device_info: Dict[str, Any]):
-        """Update or create device usage pattern"""
-        device_id = self._generate_device_id(device_info)
-        
-        # Find existing device pattern
-        existing_pattern = None
-        for pattern in self.device_patterns:
-            if pattern.device_id == device_id:
-                existing_pattern = pattern
-                break
-        
-        if existing_pattern:
-            existing_pattern.update_last_seen()
-        else:
-            new_pattern = DeviceUsagePattern(
-                device_type=device_info.get('device_type'),
-                device_id=device_id,
-                operating_system=device_info.get('os'),
-                browser=device_info.get('browser'),
-                screen_resolution=device_info.get('screen_resolution')
-            )
-            self.device_patterns.append(new_pattern)
-        
-        self.save()
-    
-    def update_location(self, location_info: Dict[str, Any]):
-        """Update location history with privacy checks"""
-        if not self.privacy_settings or not self.privacy_settings.location_tracking:
-            return
-        
-        ip_hash = self._hash_ip(location_info.get('ip_address', ''))
-        
-        # Check if this location already exists
-        existing_location = None
-        for location in self.location_history:
-            if (location.country == location_info.get('country') and 
-                location.city == location_info.get('city')):
-                existing_location = location
-                break
-        
-        if existing_location:
-            existing_location.update_detection()
-        else:
-            new_location = LocationRecord(
-                country=location_info.get('country'),
-                city=location_info.get('city'),
-                region=location_info.get('region'),
-                timezone=location_info.get('timezone'),
-                ip_address_hash=ip_hash,
-                accuracy_level=location_info.get('accuracy_level', 'city')
-            )
-            self.location_history.append(new_location)
-        
-        self.save()
-    
-    def _update_behavioral_patterns_from_interaction(self, interaction: InteractionData):
-        """Update behavioral patterns based on new interaction"""
-        if not self.behavioral_patterns:
-            self.behavioral_patterns = BehavioralPatterns()
-        
-        # Update engagement score based on interaction type
-        engagement_weights = {
-            'course_complete': 1.0,
-            'quiz_attempt': 0.8, 
-            'video_watch': 0.6,
-            'course_click': 0.4,
-            'page_view': 0.2
-        }
-        
-        weight = engagement_weights.get(interaction.type, 0.1)
-        current_score = self.behavioral_patterns.engagement_score or 0.0
-        
-        # Exponential moving average
-        alpha = 0.1
-        self.behavioral_patterns.engagement_score = (alpha * weight) + ((1 - alpha) * current_score)
-        self.behavioral_patterns.last_analyzed = datetime.utcnow()
-    
-    def _generate_device_id(self, device_info: Dict[str, Any]) -> str:
-        """Generate anonymous device identifier"""
-        device_string = f"{device_info.get('os', '')}{device_info.get('browser', '')}{device_info.get('screen_resolution', '')}"
-        return hashlib.sha256(device_string.encode()).hexdigest()[:16]
-    
-    def _hash_ip(self, ip_address: str) -> str:
-        """Hash IP address for privacy"""
-        if not ip_address:
-            return ''
-        return hashlib.sha256(f"{ip_address}privacy_salt".encode()).hexdigest()[:16]
-    
-    def get_valid_external_data(self, source_type: str = None) -> List[ExternalDataSource]:
-        """Get valid external data sources"""
-        valid_data = []
-        for source in self.external_data_sources:
-            if source.connected:  # Check if source is connected instead
-                if source_type is None or source.platform == source_type:
-                    valid_data.append(source)
-        return valid_data
-    
-    def cleanup_expired_data(self):
-        """Clean up expired external data and old interactions"""
-        # Remove inactive external data sources
-        self.external_data_sources = [
-            source for source in self.external_data_sources 
-            if source.connected
-        ]
-        
-        # Apply retention policy to interactions based on privacy settings
-        if self.privacy_settings:
-            retention_days = {
-                'minimal': 30,
-                'standard': 365,
-                'extended': 730
-            }.get(self.privacy_settings.data_retention_months, 24)
-            
-            cutoff_date = datetime.utcnow() - timedelta(days=retention_days)
-            self.interactions = [
-                interaction for interaction in self.interactions 
-                if interaction.timestamp > cutoff_date
-            ]
-        
-        self.save()
-    
-    def get_privacy_summary(self) -> Dict[str, Any]:
-        """Get summary of privacy settings and data usage"""
-        if not self.privacy_settings:
-            return {'privacy_configured': False}
-        
-        return {
-            'privacy_configured': True,
-            'consent_types': [record.consent_type for record in self.consent_history if record.granted],
-            'data_retention_months': self.privacy_settings.data_retention_months,
-            'social_integration_enabled': self.privacy_settings.allow_social_data_collection,
-            'behavioral_analysis_enabled': self.privacy_settings.allow_behavioral_analysis,
-            'external_enrichment_enabled': self.privacy_settings.allow_third_party_sharing,
-            'location_tracking_enabled': self.privacy_settings.allow_location_tracking,
-            'last_privacy_update': self.privacy_settings.last_updated
-        }
-    
-    # Helper methods for onboarding status (replacing problematic @property decorators)
-    def get_onboarding_completed(self):
-        """
-        Returns True if onboarding is completed (either quick or full).
-        Handles both new onboarding_status field and legacy boolean fields.
-        """
+    def has_analytics_consent(self) -> bool:
+        """Check analytics consent - delegates to UserPrivacy model"""
         try:
-            # First try to use the new unified onboarding_status field
-            if hasattr(self, 'onboarding_status') and self.onboarding_status is not None:
-                return self.onboarding_status in ['quick_completed', 'full_completed']
+            from apps.privacy_compliance.models import UserPrivacy
+            privacy = UserPrivacy.get_by_user_id(self.user_id)
+            return privacy.privacy_settings.allow_analytics if privacy and privacy.privacy_settings else True
+        except Exception:
+            return True  # Default to True for backward compatibility
 
-            # Fallback to legacy fields for backward compatibility
-            if hasattr(self, '_legacy_onboarding_completed') and self._legacy_onboarding_completed is not None:
-                return self._legacy_onboarding_completed
-
-            # Default to False if neither field is available
-            return False
-
-        except (AttributeError, Exception):
-            return False
-
-    def get_quick_onboarding_completed(self):
-        """
-        Returns True if quick onboarding is completed.
-        Handles both new onboarding_status field and legacy boolean fields.
-        """
+    def has_behavioral_analysis_consent(self) -> bool:
+        """Check behavioral analysis consent - delegates to UserPrivacy model"""
         try:
-            # First try to use the new unified onboarding_status field
-            if hasattr(self, 'onboarding_status') and self.onboarding_status is not None:
-                return self.onboarding_status in ['quick_completed', 'full_completed']
-
-            # Fallback to legacy fields for backward compatibility
-            if hasattr(self, '_legacy_quick_onboarding_completed') and self._legacy_quick_onboarding_completed is not None:
-                return self._legacy_quick_onboarding_completed
-
-            # Default to False if neither field is available
-            return False
-
-        except (AttributeError, Exception):
-            return False
-
-    def is_onboarding_complete(self):
-        """Check if any onboarding has been completed"""
-        try:
-            if not hasattr(self, 'onboarding_status') or self.onboarding_status is None:
-                return False
-            return self.onboarding_status != 'not_started'
-        except (AttributeError, Exception):
-            return False
-
-    def is_full_onboarding_complete(self):
-        """Check if full onboarding has been completed"""
-        try:
-            if not hasattr(self, 'onboarding_status') or self.onboarding_status is None:
-                return False
-            return self.onboarding_status == 'full_completed'
-        except (AttributeError, Exception):
-            return False
-
-    def is_onboarding_truly_complete(self):
-        """
-        Check if onboarding has all required data for true completion.
-
-        CRITICAL: Both quick and full onboarding must have basic_info AND content_preferences
-        because the preferences page requires both embedded documents regardless of how
-        onboarding was completed. Missing content_preferences breaks the preferences UI.
-        """
-        try:
-            # Check onboarding status
-            if not hasattr(self, 'onboarding_status') or self.onboarding_status is None:
-                return False
-
-            if self.onboarding_status == 'not_started':
-                return False
-
-            # BOTH basic_info and content_preferences are required for ANY completed onboarding
-            # This is because the preferences page expects both embedded documents to exist
-            if self.basic_info is None:
-                return False
-
-            if self.content_preferences is None:
-                return False
-
+            from apps.privacy_compliance.models import UserPrivacy
+            privacy = UserPrivacy.get_by_user_id(self.user_id)
+            return privacy.privacy_settings.allow_behavioral_analysis if privacy and privacy.privacy_settings else True
+        except Exception:
             return True
 
-        except (AttributeError, Exception):
-            return False
-
-    def __str__(self):
-        privacy_status = "with privacy controls" if self.privacy_settings else "no privacy config"
-        return f"UserPreference(user_id={self.user_id}, {privacy_status})"
-
-
-class ActivityData(EmbeddedDocument):
-    """Individual learning activity within a session"""
-    
-    ACTIVITY_TYPES = [
-        'course_view', 'video_watch', 'quiz_attempt', 
-        'coding_practice', 'reading', 'discussion_post'
-    ]
-    activity_type = StringField(choices=ACTIVITY_TYPES, required=True)
-    
-    # Content identifier (course ID, video ID, etc.)
-    content_id = StringField(max_length=200)
-    
-    # Duration in seconds
-    duration = IntField(min_value=0)
-    
-    # Completion rate (0.0 to 1.0)
-    completion_rate = FloatField(min_value=0.0, max_value=1.0)
-    
-    # Activity timestamp
-    timestamp = DateTimeField(required=True, default=datetime.utcnow)
-    
-    # Additional activity-specific data
-    metadata = DictField(default=dict)
-
-
-class DeviceInfo(EmbeddedDocument):
-    """Device information for session tracking"""
-    
-    DEVICE_TYPES = ['desktop', 'mobile', 'tablet']
-    type = StringField(choices=DEVICE_TYPES)
-    
-    os = StringField(max_length=100)
-    browser = StringField(max_length=100)
-
-
-class LearningSession(Document):
-    """
-    Detailed learning session tracking for analytics and AI insights.
-    """
-    
-    # Link to Django User
-    user_id = IntField(required=True)
-    
-    # Unique session identifier
-    session_id = StringField(required=True, unique=True, max_length=100)
-    
-    # Session timing
-    start_time = DateTimeField(required=True, default=datetime.utcnow)
-    end_time = DateTimeField()
-    duration = IntField()  # Duration in seconds
-    
-    # Activities during the session
-    activities = EmbeddedDocumentListField(ActivityData, default=list)
-    
-    # Device information
-    device_info = EmbeddedDocumentField(DeviceInfo)
-    
-    # Session metadata
-    session_data = DictField(default=dict)
-    
-    meta = {
-        'collection': 'learning_sessions',
-        'indexes': [
-            'user_id',
-            'session_id',
-            ('user_id', '-start_time')
-        ]
-    }
-    
-    def end_session(self):
-        """Mark session as ended and calculate duration"""
-        if not self.end_time:
-            self.end_time = datetime.utcnow()
-            self.duration = int((self.end_time - self.start_time).total_seconds())
-            self.save()
-    
-    def add_activity(self, activity_type: str, content_id: str, duration: int = 0, 
-                    completion_rate: float = 0.0, metadata: Dict[str, Any] = None):
-        """Add an activity to the session"""
-        activity = ActivityData(
-            activity_type=activity_type,
-            content_id=content_id,
-            duration=duration,
-            completion_rate=completion_rate,
-            metadata=metadata or {}
-        )
-        self.activities.append(activity)
-        self.save()
-    
-    @property
-    def total_activity_time(self) -> int:
-        """Calculate total time spent on activities"""
-        return sum(activity.duration or 0 for activity in self.activities)
-    
-    def __str__(self):
-        return f"LearningSession({self.session_id}, user={self.user_id})"
-
-
-class RecommendationItem(EmbeddedDocument):
-    """Individual course recommendation"""
-    
-    course_id = StringField(required=True, max_length=200)
-    platform = StringField(required=True, max_length=50)
-    title = StringField(required=True, max_length=300)
-    
-    # Recommendation score (0.0 to 1.0)
-    score = FloatField(required=True, min_value=0.0, max_value=1.0)
-    
-    # Reasons for recommendation
-    reasoning = ListField(StringField(max_length=100), default=list)
-    
-    # Course metadata
-    metadata = DictField(default=dict)
-
-
-class CourseRecommendation(Document):
-    """
-    Cached personalized course recommendations for users.
-    Generated by AI and cached for performance.
-    """
-    
-    # Link to Django User
-    user_id = IntField(required=True)
-    
-    # Generation timestamps
-    generated_at = DateTimeField(required=True, default=datetime.utcnow)
-    expires_at = DateTimeField(required=True)
-    
-    # Recommendation list
-    recommendations = EmbeddedDocumentListField(RecommendationItem, default=list)
-    
-    # Algorithm version for tracking
-    algorithm_version = StringField(default='1.0.0')
-    
-    # Generation context
-    generation_context = DictField(default=dict)
-    
-    meta = {
-        'collection': 'course_recommendations',
-        'indexes': [
-            'user_id',
-            'expires_at'
-        ]
-    }
-    
-    @property
-    def is_expired(self) -> bool:
-        """Check if recommendations are expired"""
-        return datetime.utcnow() > self.expires_at
-    
-    def get_top_recommendations(self, limit: int = 10) -> List[RecommendationItem]:
-        """Get top N recommendations by score"""
-        return sorted(self.recommendations, key=lambda x: x.score, reverse=True)[:limit]
-    
-    @classmethod
-    def get_valid_recommendations(cls, user_id: int) -> Optional['CourseRecommendation']:
-        """Get non-expired recommendations for user"""
+    def has_personalization_consent(self) -> bool:
+        """Check personalization consent - delegates to UserPrivacy model"""
         try:
-            return cls.objects.get(
-                user_id=user_id,
-                expires_at__gt=datetime.utcnow()
-            )
-        except DoesNotExist:
+            from apps.privacy_compliance.models import UserPrivacy
+            privacy = UserPrivacy.get_by_user_id(self.user_id)
+            return privacy.privacy_settings.allow_personalization if privacy and privacy.privacy_settings else True
+        except Exception:
+            return True
+
+    def update_behavioral_patterns(self, **kwargs):
+        """Update behavioral patterns - delegates to UserAnalytics model"""
+        try:
+            from apps.analytics.models import UserAnalytics
+            analytics = UserAnalytics.get_by_user_id(self.user_id)
+
+            if not analytics:
+                analytics = UserAnalytics.create_for_user(self.user_id)
+
+            if not analytics.behavioral_patterns:
+                from apps.analytics.models import BehavioralPatterns
+                analytics.behavioral_patterns = BehavioralPatterns()
+
+            # Update the behavioral patterns with provided kwargs
+            for key, value in kwargs.items():
+                if hasattr(analytics.behavioral_patterns, key):
+                    setattr(analytics.behavioral_patterns, key, value)
+
+            analytics.save()
+        except Exception as e:
+            # Log error but don't break the application
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error updating behavioral patterns for user {self.user_id}: {str(e)}")
+
+    def update_ai_insights(self, insights: Dict[str, Any]):
+        """Update AI insights - delegates to UserAnalytics model"""
+        try:
+            from apps.analytics.models import UserAnalytics
+            analytics = UserAnalytics.get_by_user_id(self.user_id)
+
+            if not analytics:
+                analytics = UserAnalytics.create_for_user(self.user_id)
+
+            analytics.update_ai_insights(insights)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error updating AI insights for user {self.user_id}: {str(e)}")
+
+    def add_interaction(self, interaction_type: str, data: Dict[str, Any], context: Dict[str, Any] = None):
+        """Add interaction - delegates to UserAnalytics model"""
+        try:
+            from apps.analytics.models import UserAnalytics
+            analytics = UserAnalytics.get_by_user_id(self.user_id)
+
+            if not analytics:
+                analytics = UserAnalytics.create_for_user(self.user_id)
+
+            analytics.add_interaction(interaction_type, data, context)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error adding interaction for user {self.user_id}: {str(e)}")
+
+    @property
+    def behavioral_patterns(self):
+        """Access behavioral patterns - delegates to UserAnalytics model"""
+        try:
+            from apps.analytics.models import UserAnalytics
+            analytics = UserAnalytics.get_by_user_id(self.user_id)
+            return analytics.behavioral_patterns if analytics else None
+        except Exception:
             return None
-    
-    def __str__(self):
-        return f"CourseRecommendation(user={self.user_id}, count={len(self.recommendations)})"
 
+    @property
+    def ai_insights(self):
+        """Access AI insights - delegates to UserAnalytics model"""
+        try:
+            from apps.analytics.models import UserAnalytics
+            analytics = UserAnalytics.get_by_user_id(self.user_id)
+            return analytics.ai_insights if analytics else None
+        except Exception:
+            return None
 
-class AITrainingData(Document):
-    """
-    Training data collection for improving AI personalization.
-    Stores user feedback and behavior patterns.
-    """
-    
-    # Link to Django User
-    user_id = IntField(required=True)
-    
-    # Event type
-    EVENT_TYPES = [
-        'positive_feedback', 'negative_feedback', 'course_completion',
-        'course_abandonment', 'rating_given', 'bookmark_added',
-        'share_action', 'search_refinement'
-    ]
-    event_type = StringField(choices=EVENT_TYPES, required=True)
-    
-    # Event timestamp
-    timestamp = DateTimeField(required=True, default=datetime.utcnow)
-    
-    # Event-specific data
-    event_data = DictField(default=dict)
-    
-    # User context at time of event
-    user_context = DictField(default=dict)
-    
-    # Labels for supervised learning
-    labels = DictField(default=dict)
-    
-    meta = {
-        'collection': 'ai_training_data',
-        'indexes': [
-            'user_id',
-            'event_type',
-            ('user_id', '-timestamp'),
-            ('event_type', '-timestamp')
-        ]
-    }
-    
-    @classmethod
-    def log_event(cls, user_id: int, event_type: str, event_data: Dict[str, Any],
-                  user_context: Dict[str, Any] = None, labels: Dict[str, Any] = None):
-        """Log a training event"""
-        training_data = cls(
-            user_id=user_id,
-            event_type=event_type,
-            event_data=event_data,
-            user_context=user_context or {},
-            labels=labels or {}
-        )
-        training_data.save()
-        return training_data
-    
+    @property
+    def privacy_settings(self):
+        """Access privacy settings - delegates to UserPrivacy model"""
+        try:
+            from apps.privacy_compliance.models import UserPrivacy
+            privacy = UserPrivacy.get_by_user_id(self.user_id)
+            return privacy.privacy_settings if privacy else None
+        except Exception:
+            return None
+
+    @property
+    def social_data(self):
+        """Access social data - delegates to SocialProfile model"""
+        try:
+            from apps.social_integration.models import SocialProfile
+            social = SocialProfile.get_by_user_id(self.user_id)
+            return social.social_data if social else None
+        except Exception:
+            return None
+
+    @property
+    def content_preferences(self):
+        """Access content preferences - delegates to UserContentProfile model or legacy data"""
+        try:
+            from apps.learning_content.models import UserContentProfile
+            content = UserContentProfile.get_by_user_id(self.user_id)
+            if content and content.content_preferences:
+                return content.content_preferences
+        except ImportError:
+            pass
+        except Exception:
+            pass
+
+        # Fallback to legacy data
+        if hasattr(self, '_legacy_content_preferences') and self._legacy_content_preferences:
+            # Convert legacy dict to a simple object for compatibility
+            class LegacyContentPrefs:
+                def __init__(self, data):
+                    for key, value in data.items():
+                        setattr(self, key, value)
+            return LegacyContentPrefs(self._legacy_content_preferences)
+
+        return None
+
+    # Legacy properties for backward compatibility
+    @property
+    def last_activity_date(self):
+        """Backward compatibility - map to last_active"""
+        return self.last_active
+
+    def get_onboarding_completed(self):
+        """Get onboarding completion status from embedded document"""
+        onboard_status = object.__getattribute__(self, 'onboarding_status')
+        return onboard_status.completed if onboard_status else False
+
+    def is_onboarding_truly_complete(self) -> bool:
+        """Check if onboarding is truly complete"""
+        onboard_status = object.__getattribute__(self, 'onboarding_status')
+        return onboard_status.completed if onboard_status else False
+
+    # Additional helper methods for tasks
+    def get_recent_interactions(self, days: int = 30, interaction_type: str = None):
+        """Get recent interactions - delegates to UserAnalytics"""
+        try:
+            from apps.analytics.models import UserAnalytics
+            analytics = UserAnalytics.get_by_user_id(self.user_id)
+            return analytics.get_recent_interactions(days, interaction_type) if analytics else []
+        except Exception:
+            return []
+
+    def calculate_user_segment(self) -> str:
+        """Calculate user segment based on behavioral patterns"""
+        try:
+            patterns = self.behavioral_patterns
+            if not patterns:
+                return 'new_user'
+
+            if patterns.engagement_score > 0.8 and patterns.dropout_risk_score < 0.2:
+                return 'highly_engaged'
+            elif patterns.dropout_risk_score > 0.6:
+                return 'at_risk'
+            elif patterns.learning_velocity > 0.1:
+                return 'fast_learner'
+            elif patterns.engagement_score < 0.3:
+                return 'low_engagement'
+            else:
+                return 'regular'
+        except Exception:
+            return 'unknown'
+
+    # ========================================
+    # INTERACTION DATA COMPATIBILITY HELPERS
+    # ========================================
+
+    @staticmethod
+    def safe_get_interaction_field(interaction, field_name, default=None):
+        """
+        Safely get a field from an interaction, handling both BaseDict and object formats.
+
+        Args:
+            interaction: Interaction data (BaseDict or object)
+            field_name: Name of the field to retrieve
+            default: Default value if field not found
+
+        Returns:
+            Field value or default
+        """
+        try:
+            # Try dictionary access first (BaseDict format)
+            if hasattr(interaction, 'get'):
+                return interaction.get(field_name, default)
+            elif hasattr(interaction, '__getitem__'):
+                return interaction[field_name] if field_name in interaction else default
+            # Try object attribute access (new format)
+            elif hasattr(interaction, field_name):
+                return getattr(interaction, field_name, default)
+            else:
+                return default
+        except (KeyError, AttributeError, TypeError):
+            return default
+
+    def get_safe_interactions(self):
+        """
+        Get interactions with safe field access wrapper.
+        Returns a list of interaction wrappers that work with both legacy and new formats.
+        """
+        if not self.interactions:
+            return []
+
+        class InteractionWrapper:
+            """Wrapper to provide unified access to interaction data"""
+            def __init__(self, raw_interaction):
+                self._raw = raw_interaction
+
+            @property
+            def type(self):
+                return UserPreference.safe_get_interaction_field(self._raw, 'type', 'unknown')
+
+            @property
+            def timestamp(self):
+                return UserPreference.safe_get_interaction_field(self._raw, 'timestamp')
+
+            @property
+            def data(self):
+                return UserPreference.safe_get_interaction_field(self._raw, 'data', {})
+
+            @property
+            def context(self):
+                return UserPreference.safe_get_interaction_field(self._raw, 'context', {})
+
+            def get(self, key, default=None):
+                """Dictionary-like access"""
+                return UserPreference.safe_get_interaction_field(self._raw, key, default)
+
+            def __getitem__(self, key):
+                """Dictionary-like access with KeyError"""
+                value = UserPreference.safe_get_interaction_field(self._raw, key)
+                if value is None:
+                    raise KeyError(key)
+                return value
+
+        return [InteractionWrapper(interaction) for interaction in self.interactions]
+
     def __str__(self):
-        return f"AITrainingData({self.event_type}, user={self.user_id})"
+        completion = f"{self.profile_completeness}%"
+        return f"UserPreference(user_id={self.user_id}, completion={completion})"

@@ -103,7 +103,7 @@ class LoginView(TokenObtainPairView):
             # Extend refresh token lifetime for remember_me
             refresh.set_exp(lifetime=timezone.timedelta(days=30))
         
-        access = refresh.access_token
+        access = refresh.access_token # type:ignore
 
         # Log successful login
         log_auth_event(user, 'login_success', request, success=True)
@@ -177,7 +177,7 @@ class MFAVerifyView(views.APIView):
         serializer = MFAVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        code = serializer.validated_data['code']
+        code = serializer.validated_data['code'] # type:ignore
 
         # Verify TOTP code
         totp_devices = devices_for_user(user, confirmed=True)
@@ -207,7 +207,7 @@ class MFAVerifyView(views.APIView):
             # Extend refresh token lifetime for remember_me
             refresh.set_exp(lifetime=timezone.timedelta(days=30))
         
-        access = refresh.access_token
+        access = refresh.access_token # type:ignore
 
         # Log successful login
         log_auth_event(user, 'login_success', request, success=True)
@@ -288,7 +288,7 @@ class PasswordChangeView(views.APIView):
         serializer = PasswordChangeSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             user = request.user
-            user.set_password(serializer.validated_data['new_password'])
+            user.set_password(serializer.validated_data['new_password']) # type:ignore
             user.must_change_password = False
             user.last_password_change = timezone.now()
             user.save()
@@ -342,7 +342,7 @@ class MFAEnrollmentView(views.APIView):
                 'secret': base32_secret,
                 'qr_code': f"data:image/png;base64,{qr_code}",
                 'backup_codes': backup_codes,
-                'device_id': device.id
+                'device_id': device.id # type:ignore
             },
             message='MFA enrollment initiated successfully'
         )
@@ -353,7 +353,7 @@ class MFAEnrollmentView(views.APIView):
         
         serializer = MFAVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        code = serializer.validated_data['code']
+        code = serializer.validated_data['code']# type:ignore
 
         try:
             device = TOTPDevice.objects.get(id=device_id, user=request.user)
@@ -636,7 +636,7 @@ class MFAStatusView(views.APIView):
                 'totp_device_count': totp_devices.count(),
                 'has_backup_codes': unused_backup_codes.exists(),
                 'backup_codes_count': unused_backup_codes.count(),
-                'enrollment_date': totp_devices.first().created_at if totp_devices.exists() else None,
+                'enrollment_date': totp_devices.first().created_at if totp_devices.exists() else None,# type:ignore
             }
             
             return APISuccess.create(
@@ -663,8 +663,8 @@ class UserRegistrationView(views.APIView):
             user = serializer.save()
             
             # Generate tokens for immediate login after registration
-            refresh = RefreshToken.for_user(user)
-            access_token = str(refresh.access_token)
+            refresh = RefreshToken.for_user(user) # type:ignore
+            access_token = str(refresh.access_token) # type:ignore
             refresh_token = str(refresh)
             
             # Get user data
@@ -708,7 +708,7 @@ class PasswordResetView(views.APIView):
         serializer = PasswordResetSerializer(data=request.data)
         
         if serializer.is_valid():
-            email = serializer.validated_data['email']
+            email = serializer.validated_data['email'] # type:ignore
             
             try:
                 user = User.objects.get(email=email)
@@ -764,8 +764,8 @@ class PasswordResetConfirmView(views.APIView):
         serializer = PasswordResetConfirmSerializer(data=request.data)
         
         if serializer.is_valid():
-            token_obj = serializer.validated_data['token_obj']
-            new_password = serializer.validated_data['new_password']
+            token_obj = serializer.validated_data['token_obj'] # type:ignore
+            new_password = serializer.validated_data['new_password'] # type:ignore
             user = token_obj.user
             
             try:
@@ -1017,7 +1017,7 @@ class SessionActivityView(views.APIView):
             for event in events:
                 events_data.append({
                     'event_type': event.event_type,
-                    'event_type_display': event.get_event_type_display(),
+                    'event_type_display': event.get_event_type_display(), # type:ignore
                     'success': event.success,
                     'ip_address': event.ip_address,
                     'created_at': event.created_at,

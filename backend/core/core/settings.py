@@ -42,6 +42,13 @@ INSTALLED_APPS = [
     # Local apps
     'apps.auth.apps.AuthConfig',
     'apps.preferences.apps.PreferencesConfig',
+
+    # Domain-driven modular apps
+    'apps.analytics.apps.AnalyticsConfig',
+    'apps.social_integration.apps.SocialIntegrationConfig',
+    'apps.privacy_compliance.apps.PrivacyComplianceConfig',
+    'apps.learning_content.apps.LearningContentConfig',
+
     'ml_services.apps.MlServicesConfig',  # ML Services for learning path generation
 ]
 
@@ -324,5 +331,5 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 import sys
 sys.path.insert(0, os.path.join(BASE_DIR, 'apps'))
-sys.path.insert(0, BASE_DIR.parent)  # Add backend root directory for ml_services
+sys.path.insert(0, BASE_DIR.parent)  # Add backend root directory for ml_services # type:ignore
 

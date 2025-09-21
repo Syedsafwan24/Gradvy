@@ -59,7 +59,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         
     def validate_email(self, value):
         user = self.instance
-        if User.objects.filter(email=value).exclude(pk=user.pk).exists():
+        if User.objects.filter(email=value).exclude(pk=user.pk).exists(): # type:ignore
             raise serializers.ValidationError("A user with this email already exists.")
         return value
     
@@ -173,7 +173,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop('password_confirm')
-        user = User.objects.create_user(**validated_data)
+        user = User.objects.create_user(**validated_data) # type:ignore
         return user
 
 

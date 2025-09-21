@@ -4,11 +4,25 @@ Converts between MongoDB documents and REST API JSON.
 """
 from rest_framework import serializers
 from typing import Dict, List, Any
-from .models import (
-    UserPreference, BasicInfo, ContentPreferences, AIInsights,
-    InteractionData, LearningSession, CourseRecommendation,
-    AITrainingData, RecommendationItem
-)
+from .models import UserPreference, BasicInfo, OnboardingStatus
+
+# Import moved classes from their new domain apps
+try:
+    from apps.learning_content.models import ContentPreferences
+    from apps.analytics.models import AIInsights, InteractionData
+except ImportError:
+    # Fallback for development - define minimal classes for compatibility
+    class ContentPreferences:
+        PLATFORM_CHOICES = ['udemy', 'coursera', 'youtube', 'edx', 'khan_academy', 'pluralsight', 'linkedin_learning']
+        CONTENT_TYPES = ['video', 'article', 'interactive', 'quiz', 'project', 'book', 'podcast']
+        DIFFICULTY_CHOICES = ['mixed', 'beginner', 'intermediate', 'advanced']
+        DURATION_CHOICES = ['short', 'medium', 'long', 'mixed']
+
+    class AIInsights:
+        pass
+
+    class InteractionData:
+        INTERACTION_TYPES = ['course_click', 'quiz_attempt', 'video_watch', 'search', 'page_view', 'course_enroll', 'course_complete', 'bookmark', 'rating_given', 'review_written', 'course_abandoned', 'onboarding_started', 'onboarding_flow_completed']
 
 
 class BasicInfoSerializer(serializers.Serializer):
@@ -169,55 +183,75 @@ class UserPreferenceSerializer(serializers.Serializer):
     def create(self, validated_data):
         """Create a new user preference document"""
         user_id = self.context['request'].user.id
-        
+
         # Extract nested data
         basic_info_data = validated_data.pop('basic_info', {})
         content_prefs_data = validated_data.pop('content_preferences', {})
         custom_prefs = validated_data.pop('custom_preferences', {})
-        
-        # Create MongoDB document
-        preference = UserPreference(
-            user_id=user_id,
-            custom_preferences=custom_prefs
-        )
-        
-        # Add nested objects if provided
-        if basic_info_data:
-            preference.basic_info = BasicInfo(**basic_info_data)
-        
+
+        # Create main UserPreference document
+        preference = UserPreference.create_for_user(user_id, basic_info_data)
+
+        # Initialize domain models if they don't exist
+        preference.initialize_domain_models()
+
+        # Update content preferences in the appropriate domain model
         if content_prefs_data:
-            preference.content_preferences = ContentPreferences(**content_prefs_data)
-        
+            try:
+                from apps.learning_content.models import UserContentProfile, ContentPreferences
+                content_profile = UserContentProfile.get_by_user_id(user_id)
+                if not content_profile:
+                    content_profile = UserContentProfile.create_for_user(user_id, content_prefs_data)
+                else:
+                    content_profile.content_preferences = ContentPreferences(**content_prefs_data)
+                    content_profile.save()
+            except ImportError:
+                # Fallback - store in ui_preferences
+                preference.ui_preferences['content_preferences'] = content_prefs_data
+
+        # Store custom preferences
+        preference.ui_preferences.update(custom_prefs)
         preference.save()
+
         return preference
     
     def update(self, instance, validated_data):
         """Update existing user preference document"""
-        
+
         # Update basic info
         if 'basic_info' in validated_data:
             basic_info_data = validated_data.pop('basic_info')
-            if not instance.basic_info:
-                instance.basic_info = BasicInfo()
-            
-            for key, value in basic_info_data.items():
-                setattr(instance.basic_info, key, value)
-        
-        # Update content preferences
+            instance.update_basic_info(basic_info_data)
+
+        # Update content preferences in the appropriate domain model
         if 'content_preferences' in validated_data:
             content_prefs_data = validated_data.pop('content_preferences')
-            if not instance.content_preferences:
-                instance.content_preferences = ContentPreferences()
-            
-            for key, value in content_prefs_data.items():
-                setattr(instance.content_preferences, key, value)
-        
+            try:
+                from apps.learning_content.models import UserContentProfile, ContentPreferences
+                content_profile = UserContentProfile.get_by_user_id(instance.user_id)
+                if not content_profile:
+                    content_profile = UserContentProfile.create_for_user(instance.user_id, content_prefs_data)
+                else:
+                    if not content_profile.content_preferences:
+                        content_profile.content_preferences = ContentPreferences()
+                    for key, value in content_prefs_data.items():
+                        setattr(content_profile.content_preferences, key, value)
+                    content_profile.save()
+            except ImportError:
+                # Fallback - store in ui_preferences
+                if 'content_preferences' not in instance.ui_preferences:
+                    instance.ui_preferences['content_preferences'] = {}
+                instance.ui_preferences['content_preferences'].update(content_prefs_data)
+
+        # Update custom preferences
+        if 'custom_preferences' in validated_data:
+            custom_prefs = validated_data.pop('custom_preferences')
+            instance.ui_preferences.update(custom_prefs)
+
         # Update other fields
         for key, value in validated_data.items():
-            setattr(instance, key, value)
-
-        # Recalculate profile completion percentage after updates
-        instance.update_completion_percentage()
+            if hasattr(instance, key):
+                setattr(instance, key, value)
 
         instance.save()
         return instance
@@ -227,55 +261,52 @@ class UserPreferenceSerializer(serializers.Serializer):
         if instance is None:
             return None
 
-        # Build the base data structure using direct attribute access
+        # Build the base data structure using our refactored model
         data = {
             'user_id': instance.user_id,
             'created_at': instance.created_at,
             'updated_at': instance.updated_at,
-            'custom_preferences': instance.custom_preferences or {},
+            'custom_preferences': instance.ui_preferences or {},
 
             # Onboarding and profile completion fields
-            'onboarding_status': instance.onboarding_status or 'not_started',
-            'profile_completion_percentage': instance.profile_completion_percentage or 0.0,
-            'onboarding_completed_at': instance.onboarding_completed_at,
-            'last_completion_prompt_shown': instance.last_completion_prompt_shown,
-            'completion_prompt_dismissed_count': instance.completion_prompt_dismissed_count or 0,
-            'quick_onboarding_data': instance.quick_onboarding_data or {},
-
-            # Gamification fields
-            'achievement_badges': instance.achievement_badges or [],
-            'completion_milestones': instance.completion_milestones or {},
-            'streak_data': instance.streak_data or {},
+            'profile_completion_percentage': instance.profile_completeness or 0.0,
+            'last_active': instance.last_active,
         }
 
-        # Compute onboarding completion status from onboarding_status field
-        onboarding_status = data['onboarding_status']
-        data['onboarding_completed'] = onboarding_status in ['quick_completed', 'full_completed']
-        data['quick_onboarding_completed'] = onboarding_status in ['quick_completed', 'full_completed']
+        # Onboarding status from embedded document
+        if instance.onboarding_status:
+            data['onboarding_status'] = 'full_completed' if instance.onboarding_status.completed else 'not_started'
+            data['onboarding_completed'] = instance.onboarding_status.completed
+            data['quick_onboarding_completed'] = instance.onboarding_status.completed  # Legacy compatibility
+            data['onboarding_completed_at'] = instance.onboarding_status.completed_at
+        else:
+            data['onboarding_status'] = 'not_started'
+            data['onboarding_completed'] = False
+            data['quick_onboarding_completed'] = False
+            data['onboarding_completed_at'] = None
 
-        # Serialize nested embedded documents
+        # Basic info (still embedded in preferences)
         if instance.basic_info:
             data['basic_info'] = BasicInfoSerializer(instance.basic_info).data
         else:
             data['basic_info'] = None
 
+        # Content preferences (from domain model via compatibility property)
         if instance.content_preferences:
             data['content_preferences'] = ContentPreferencesSerializer(instance.content_preferences).data
         else:
             data['content_preferences'] = None
 
+        # AI insights (from analytics domain via compatibility property)
         if instance.ai_insights:
             data['ai_insights'] = AIInsightsSerializer(instance.ai_insights).data
         else:
             data['ai_insights'] = None
 
-        # Recent interactions (limit for performance)
+        # Recent interactions (from analytics domain via compatibility method)
         try:
-            if hasattr(instance, 'get_recent_interactions'):
-                recent_interactions = instance.get_recent_interactions(days=30)[:50]
-                data['interactions'] = InteractionDataSerializer(recent_interactions, many=True).data
-            else:
-                data['interactions'] = []
+            recent_interactions = instance.get_recent_interactions(days=30)[:50]
+            data['interactions'] = InteractionDataSerializer(recent_interactions, many=True).data
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
@@ -411,7 +442,12 @@ class OnboardingSerializer(serializers.Serializer):
             }
 
         logger.debug(f"🎯 Creating content preferences with data: {content_prefs_data}")
-        preference.content_preferences = ContentPreferences(**content_prefs_data)
+        try:
+            from apps.learning_content.models import ContentPreferences as DomainContentPreferences
+            preference.content_preferences = DomainContentPreferences(**content_prefs_data)
+        except ImportError:
+            # Fallback - store in ui_preferences if domain model unavailable
+            preference.ui_preferences['content_preferences'] = content_prefs_data
         content_completion = preference.calculate_profile_completion()
         logger.info(f"📈 Completion after content preferences: {content_completion:.1f}%")
 
@@ -465,10 +501,17 @@ class InteractionLogSerializer(serializers.Serializer):
             validated_data.get('context', {})
         )
         
+        # Get timestamp safely from the last interaction
+        last_interaction_timestamp = None
+        if preference.interactions:
+            last_interaction_timestamp = UserPreference.safe_get_interaction_field(
+                preference.interactions[-1], 'timestamp'
+            )
+
         return {
             'success': True,
             'interaction_type': validated_data['type'],
-            'timestamp': preference.interactions[-1].timestamp
+            'timestamp': last_interaction_timestamp
         }
 
 
@@ -544,14 +587,14 @@ class UserAnalyticsSerializer(serializers.Serializer):
         if user_preference.basic_info and user_preference.basic_info.learning_goals:
             top_interests = user_preference.basic_info.learning_goals[:5]
         
-        # Calculate completion rate from interactions
+        # Calculate completion rate from interactions (using safe access)
         completion_interactions = [
-            i for i in user_preference.interactions 
-            if i.type == 'course_complete'
+            i for i in user_preference.interactions
+            if UserPreference.safe_get_interaction_field(i, 'type') == 'course_complete'
         ]
         enrolled_interactions = [
-            i for i in user_preference.interactions 
-            if i.type == 'course_enroll'
+            i for i in user_preference.interactions
+            if UserPreference.safe_get_interaction_field(i, 'type') == 'course_enroll'
         ]
         
         completion_rate = 0.0
