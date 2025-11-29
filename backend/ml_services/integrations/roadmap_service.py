@@ -416,6 +416,204 @@ class RoadmapService:
 
         return filtered_roadmap
 
+    def filter_roadmap_by_skills(
+        self,
+        roadmap: Roadmap,
+        current_skills: List[str],
+        similarity_threshold: float = 0.7
+    ) -> Roadmap:
+        """
+        Filter roadmap to skip nodes the user already knows (skill gap analysis).
+
+        Uses fuzzy title matching to compare user's current skills against roadmap node titles.
+        Nodes with 70%+ similarity to user's skills are filtered out (already known).
+
+        Args:
+            roadmap: Original roadmap with all nodes
+            current_skills: List of skills the user already has (e.g., ["Python", "HTML/CSS"])
+            similarity_threshold: Minimum similarity ratio to consider a skill "known" (default 0.7)
+
+        Returns:
+            Filtered roadmap with nodes the user needs to learn (unknown skills only)
+        """
+        # If no current skills, return full roadmap (user is complete beginner)
+        if not current_skills:
+            logger.info("🔍 No current skills provided - returning full roadmap")
+            return roadmap
+
+        # Normalize user skills for comparison (lowercase, strip whitespace)
+        normalized_user_skills = [skill.lower().strip() for skill in current_skills if skill]
+
+        if not normalized_user_skills:
+            return roadmap
+
+        # Filter out nodes that user already knows
+        filtered_nodes = []
+        skipped_nodes = []
+
+        for node in roadmap.nodes:
+            # Normalize node title for comparison
+            normalized_title = node.title.lower().strip()
+
+            # Check if this node matches any of the user's current skills
+            is_known = False
+            for skill in normalized_user_skills:
+                # Calculate simple similarity ratio (percentage of matching characters)
+                # This is a lightweight alternative to fuzzywuzzy/difflib for exact word matching
+                if skill in normalized_title or normalized_title in skill:
+                    # Check character-level similarity
+                    similarity = self._calculate_similarity(normalized_title, skill)
+
+                    if similarity >= similarity_threshold:
+                        is_known = True
+                        skipped_nodes.append(node.title)
+                        logger.debug(f"⏭️  Skipping known node: '{node.title}' (matches skill: '{skill}', similarity: {similarity:.2f})")
+                        break
+
+            # Keep node if it's NOT already known
+            if not is_known:
+                filtered_nodes.append(node)
+
+        # Update metadata
+        filtered_roadmap = Roadmap(
+            roadmap_id=roadmap.roadmap_id,
+            title=roadmap.title,
+            description=roadmap.description,
+            category=roadmap.category,
+            nodes=filtered_nodes,
+            metadata={
+                **roadmap.metadata,
+                'filtered_by_skills': True,
+                'user_skills': current_skills,
+                'original_nodes': len(roadmap.nodes),
+                'skipped_nodes': len(skipped_nodes),
+                'total_nodes': len(filtered_nodes)
+            }
+        )
+
+        logger.info(f"🔍 Skill gap analysis: {len(roadmap.nodes)} nodes → {len(filtered_nodes)} nodes (skipped {len(skipped_nodes)} known topics)")
+        if skipped_nodes:
+            logger.info(f"   Skipped topics: {', '.join(skipped_nodes[:5])}{'...' if len(skipped_nodes) > 5 else ''}")
+
+        return filtered_roadmap
+
+    def add_prerequisite_nodes(
+        self,
+        roadmap: Roadmap,
+        current_skills: List[str],
+        filtered_roadmap: Roadmap
+    ) -> Roadmap:
+        """
+        Add back prerequisite nodes for topics the user doesn't know.
+
+        After filtering out known skills, we need to ensure all prerequisites
+        for remaining nodes are included in the learning path.
+
+        Example:
+        - User knows: Python basics
+        - Filtered roadmap includes: Advanced Python, Web Frameworks
+        - This method adds back: Intermediate Python (prerequisite for Advanced Python)
+
+        Args:
+            roadmap: Original full roadmap
+            current_skills: User's current skills
+            filtered_roadmap: Roadmap after filtering by skills
+
+        Returns:
+            Roadmap with prerequisite nodes added back to fill skill gaps
+        """
+        # Build a set of node IDs in the filtered roadmap
+        filtered_node_ids = {node.id for node in filtered_roadmap.nodes}
+
+        # Build a map of all nodes from original roadmap
+        all_nodes_map = {node.id: node for node in roadmap.nodes}
+
+        # Find missing prerequisite nodes
+        nodes_to_add = []
+        checked_nodes = set()
+
+        for node in filtered_roadmap.nodes:
+            # Check each prerequisite
+            for prereq_id in node.prerequisites:
+                # If prerequisite is not in filtered roadmap and not already checked
+                if prereq_id not in filtered_node_ids and prereq_id not in checked_nodes:
+                    # Add the prerequisite node
+                    if prereq_id in all_nodes_map:
+                        prereq_node = all_nodes_map[prereq_id]
+                        nodes_to_add.append(prereq_node)
+                        filtered_node_ids.add(prereq_id)
+                        checked_nodes.add(prereq_id)
+
+                        logger.debug(f"➕ Adding prerequisite node: '{prereq_node.title}' (required for '{node.title}')")
+
+        # Combine filtered nodes with prerequisite nodes
+        all_nodes = list(filtered_roadmap.nodes) + nodes_to_add
+
+        # Re-sort nodes using topological sort to maintain prerequisite ordering
+        node_map = {node.id: node for node in all_nodes}
+        sorted_nodes = self._topological_sort(all_nodes, node_map)
+
+        # Update metadata
+        enhanced_roadmap = Roadmap(
+            roadmap_id=filtered_roadmap.roadmap_id,
+            title=filtered_roadmap.title,
+            description=filtered_roadmap.description,
+            category=filtered_roadmap.category,
+            nodes=sorted_nodes,
+            metadata={
+                **filtered_roadmap.metadata,
+                'prerequisites_added': len(nodes_to_add),
+                'total_nodes': len(sorted_nodes)
+            }
+        )
+
+        if nodes_to_add:
+            logger.info(f"➕ Added {len(nodes_to_add)} prerequisite nodes to fill skill gaps")
+            logger.info(f"   Prerequisites: {', '.join([n.title for n in nodes_to_add[:3]])}{'...' if len(nodes_to_add) > 3 else ''}")
+
+        return enhanced_roadmap
+
+    @staticmethod
+    def _calculate_similarity(str1: str, str2: str) -> float:
+        """
+        Calculate simple string similarity ratio.
+
+        Uses a lightweight character-based approach:
+        - Exact substring match → 1.0
+        - Partial word overlap → 0.5-0.9
+        - No overlap → 0.0
+
+        Args:
+            str1: First string (normalized)
+            str2: Second string (normalized)
+
+        Returns:
+            Similarity ratio between 0.0 and 1.0
+        """
+        # Exact match
+        if str1 == str2:
+            return 1.0
+
+        # Full substring match
+        if str1 in str2 or str2 in str1:
+            return 0.85
+
+        # Word-level matching (split by spaces and compare words)
+        words1 = set(str1.split())
+        words2 = set(str2.split())
+
+        if not words1 or not words2:
+            return 0.0
+
+        # Calculate Jaccard similarity (intersection over union)
+        intersection = len(words1 & words2)
+        union = len(words1 | words2)
+
+        if union == 0:
+            return 0.0
+
+        return intersection / union
+
     def clear_cache(self):
         """Clear the roadmap cache."""
         self._cache.clear()

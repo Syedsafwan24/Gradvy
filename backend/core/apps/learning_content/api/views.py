@@ -92,18 +92,33 @@ class GenerateLearningPathView(APIView):
         """
         # Map platforms to their primary content types
         platform_types = {
+            # Video platforms
             'youtube': 'video',
             'udemy': 'video',  # Udemy is primarily video-based
             'coursera': 'video',
             'edx': 'video',
             'pluralsight': 'video',
             'linkedin': 'video',
+
+            # Article platforms (reading content)
             'medium': 'article',
-            'dev_to': 'article',
-            'freecodecamp': 'interactive',
+            'dev_to': 'article',  # Dev.to developer articles
+            'hashnode': 'article',  # Hashnode developer blogs
+
+            # Interactive/coding platforms
+            'freecodecamp': 'interactive',  # freeCodeCamp interactive tutorials
             'codecademy': 'interactive',
             'leetcode': 'interactive',
-            'preview': 'video'  # Preview/mock data defaults to video
+            'exercism': 'interactive',  # Exercism coding exercises
+
+            # Hands-on/project platforms
+            'github': 'project',  # GitHub tutorial repositories
+
+            # Legacy preview data (will be removed)
+            'preview': 'video',
+            'article_preview': 'article',
+            'interactive_preview': 'interactive',
+            'project_preview': 'project'
         }
 
         # Get platform's default type
@@ -245,6 +260,49 @@ class GenerateLearningPathView(APIView):
         return capacity
 
     @staticmethod
+    def calculate_deterministic_variance(user_preferences: Dict) -> int:
+        """
+        Calculate module count adjustment based on user constraints (DETERMINISTIC).
+
+        This replaces the random ±0-2 variance with a predictable calculation based on:
+        - Time availability: Limited time = fewer modules
+        - Timeline pressure: Urgent goals = fewer modules
+        - Career urgency: Career change = more modules (comprehensive prep)
+
+        Args:
+            user_preferences: User preference dict with basic_info
+
+        Returns:
+            int: Variance adjustment (-2 to +2)
+        """
+        variance = 0
+        basic_info = user_preferences.get('basic_info', {})
+
+        # Time constraint adjustment
+        # Less time available = reduce modules to avoid overwhelming
+        time_map = {'1-2hrs': -1, '3-5hrs': 0, '5+hrs': +1}
+        variance += time_map.get(basic_info.get('time_availability', '3-5hrs'), 0)
+
+        # Timeline pressure adjustment
+        # Shorter timeline = reduce modules to stay focused
+        timeline_map = {'3months': -1, '6months': 0, '1year': +1, 'flexible': +1}
+        variance += timeline_map.get(basic_info.get('target_timeline', '6months'), 0)
+
+        # Career urgency adjustment
+        # Career change = more modules (need comprehensive knowledge)
+        # Professional = fewer modules (refining specific skills)
+        career_map = {
+            'student': 0,          # Baseline
+            'career_change': +1,   # Need broad coverage
+            'skill_upgrade': 0,    # Baseline
+            'professional': -1     # Focus on specifics
+        }
+        variance += career_map.get(basic_info.get('career_stage', 'student'), 0)
+
+        # Clamp to ±2
+        return max(-2, min(variance, 2))
+
+    @staticmethod
     def calculate_dynamic_module_count(
         user_preferences: Dict,
         roadmap,  # Full roadmap object for intelligent analysis
@@ -265,8 +323,6 @@ class GenerateLearningPathView(APIView):
         Returns:
             int: Optimal module count (typically 4-20, varies based on analysis)
         """
-        import random
-
         # Get configurable bounds from Django settings
         MIN_MODULES = settings.LEARNING_PATH_MIN_MODULES
         MAX_MODULES = settings.LEARNING_PATH_MAX_MODULES
@@ -300,10 +356,9 @@ class GenerateLearningPathView(APIView):
         final_count = int(optimal_modules)
         final_count = max(MIN_MODULES, min(final_count, max_from_roadmap, MAX_MODULES))
 
-        # Step 6: Add small intelligent variance (±0-2) to avoid always same result for same inputs
-        # Variance is proportional to capacity (higher capacity = more variance)
-        max_variance = 2 if capacity_score > 1.0 else 1
-        variance = random.randint(-max_variance, max_variance)
+        # Step 6: Add deterministic variance based on user constraints
+        # This replaces random variance with predictable adjustment
+        variance = GenerateLearningPathView.calculate_deterministic_variance(user_preferences)
         final_count_with_variance = max(MIN_MODULES, min(final_count + variance, max_from_roadmap, MAX_MODULES))
 
         # Intelligent logging for transparency
@@ -333,16 +388,20 @@ class GenerateLearningPathView(APIView):
         request_override: Optional[int] = None
     ) -> int:
         """
-        Calculate dynamic lessons per module based on:
-        1. Preferred pace (slow → 3, medium → 5, fast → 7)
-        2. Module position (early modules +1 for foundation, late modules -1 for advanced)
+        PHASE 2: ADAPTIVE pacing - Calculate lessons per module dynamically.
 
-        Range: 3-8 lessons per module
+        Considers:
+        1. User's time availability (1-2hrs → fewer lessons, 5+hrs → more lessons)
+        2. Skill level (beginners → fewer lessons to avoid overwhelm, advanced → more)
+        3. Preferred pace as a multiplier
+        4. Module position (early modules +1 for foundation, late modules -1 for focus)
+
+        Range: 2-10 lessons per module (configurable via settings)
 
         Examples:
-        - Slow pace, module 1/10 → 4 lessons (3 + 1 for early module)
-        - Medium pace, module 5/10 → 5 lessons (middle module)
-        - Fast pace, module 10/10 → 6 lessons (7 - 1 for late module)
+        - Beginner, 1-2hrs, slow pace, module 1/10 → 3 lessons (2 base + 1 for early)
+        - Intermediate, 3-5hrs, medium pace, module 5/10 → 5 lessons
+        - Advanced, 5+hrs, fast pace, module 10/10 → 8 lessons (9 - 1 for late)
         """
         # Get configurable bounds from Django settings
         MIN_LESSONS = settings.LEARNING_PATH_MIN_LESSONS
@@ -353,13 +412,37 @@ class GenerateLearningPathView(APIView):
             return request_override
 
         basic_info = user_preferences.get('basic_info', {})
+
+        # Factor 1: Time availability (base lesson count)
+        # More time available = can handle more lessons per module
+        time_availability = basic_info.get('time_availability', '3-5hrs')
+        time_base_map = {
+            '1-2hrs': 3,    # Limited time → fewer lessons
+            '3-5hrs': 5,    # Moderate time → standard lessons
+            '5+hrs': 7      # Lots of time → more lessons
+        }
+        time_base = time_base_map.get(time_availability, 5)
+
+        # Factor 2: Skill level adjustment
+        # Beginners need fewer lessons per module to avoid overwhelm
+        # Advanced users can handle more lessons per module
+        experience_level = basic_info.get('experience_level', 'some_basics')
+        skill_adjustment = 0
+        if experience_level == 'complete_beginner':
+            skill_adjustment = -1  # Fewer lessons to start slow
+        elif experience_level in ['advanced', 'expert']:
+            skill_adjustment = +1  # More lessons for experienced users
+
+        # Factor 3: Pace multiplier (affects speed, not quantity)
+        # Slow pace = more review/practice, fast pace = skip basics
         pace = basic_info.get('preferred_pace', 'medium')
+        pace_multiplier = {'slow': 0.9, 'medium': 1.0, 'fast': 1.1}.get(pace, 1.0)
 
-        # Pace base: slow → 3 lessons, medium → 5, fast → 7
-        pace_mapping = {'slow': 3, 'medium': 5, 'fast': 7}
-        base_lessons = pace_mapping.get(pace, 5)
+        # Calculate base lessons with time and skill factors
+        base_lessons = time_base + skill_adjustment
+        base_lessons = int(base_lessons * pace_multiplier)
 
-        # Module position adjustment
+        # Factor 4: Module position adjustment
         # Early modules (first 33%) get +1 lesson (more foundational content)
         # Middle modules (33-67%) keep base count
         # Late modules (last 33%) get -1 lesson (more advanced, focused)
@@ -371,8 +454,12 @@ class GenerateLearningPathView(APIView):
         else:  # Middle third - normal
             lessons = base_lessons
 
-        # Bounds: Use configurable settings (default 2-10 lessons)
-        return max(MIN_LESSONS, min(lessons, MAX_LESSONS))
+        # Apply bounds: Use configurable settings (default 2-10 lessons)
+        final_lessons = max(MIN_LESSONS, min(lessons, MAX_LESSONS))
+
+        logger.debug(f"📊 Adaptive pacing: time={time_availability}({time_base}), skill={experience_level}({skill_adjustment:+d}), pace={pace}(×{pace_multiplier}), position={position_ratio:.2f} → {final_lessons} lessons")
+
+        return final_lessons
 
     def _calculate_preference_hash(self, user_preferences_dict: Dict, generation_request) -> str:
         """
@@ -585,6 +672,36 @@ class GenerateLearningPathView(APIView):
                 roadmap,
                 generation_request.experience_level
             )
+
+            # PHASE 2: Skill gap analysis - filter by user's current skills
+            # Get or create user content profile to access current_skills
+            try:
+                user_profile = UserContentProfile.objects.get(user_id=str(request.user.id))
+                current_skills = user_profile.current_skills or []
+                logger.info(f"🎯 User has {len(current_skills)} current skills: {current_skills[:3]}{'...' if len(current_skills) > 3 else ''}")
+            except UserContentProfile.DoesNotExist:
+                # No profile yet - user is complete beginner
+                current_skills = []
+                logger.info(f"🎯 No content profile found - assuming beginner with no current skills")
+
+            # Apply skill gap analysis if user has any skills
+            if current_skills:
+                # Step 1: Filter out nodes user already knows
+                skill_filtered_roadmap = roadmap_service.filter_roadmap_by_skills(
+                    filtered_roadmap,
+                    current_skills,
+                    similarity_threshold=0.7  # 70% similarity to consider skill "known"
+                )
+
+                # Step 2: Add back prerequisites for nodes user doesn't know
+                filtered_roadmap = roadmap_service.add_prerequisite_nodes(
+                    roadmap,
+                    current_skills,
+                    skill_filtered_roadmap
+                )
+                logger.info(f"✅ Skill gap analysis complete: {len(filtered_roadmap.nodes)} nodes in personalized roadmap")
+            else:
+                logger.info(f"⏭️  Skipping skill gap analysis (no current skills)")
 
             # Convert roadmap nodes to modules with real course resources
             modules_data = []
