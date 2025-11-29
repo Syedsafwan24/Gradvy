@@ -7,6 +7,14 @@ RELEVANT FILES: preferences/models.py, analytics/models.py, ml_services/
 
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
+
+# Django ORM imports (PostgreSQL)
+from django.db import models
+from django.conf import settings
+from django.core.validators import MinValueValidator, MaxValueValidator
+from django.utils import timezone
+
+# MongoEngine imports (MongoDB)
 from mongoengine import (
     Document, EmbeddedDocument, EmbeddedDocumentField, EmbeddedDocumentListField,
     StringField, IntField, DateTimeField, ListField,
@@ -73,6 +81,102 @@ class RecommendationItem(EmbeddedDocument):
     metadata = DictField(default=dict)
 
 
+class CareerRole(EmbeddedDocument):
+    """
+    Career role achievable from learning path.
+
+    Part of career insights system - shows what jobs users can get
+    after completing a learning path.
+    """
+    role_title = StringField(required=True, max_length=100)
+    role_description = StringField(max_length=500)
+
+    # Salary data (in USD, can be converted to other currencies)
+    salary_entry_min = IntField()  # e.g., 60000
+    salary_entry_max = IntField()  # e.g., 80000
+    salary_mid_min = IntField()    # e.g., 80000
+    salary_mid_max = IntField()    # e.g., 120000
+    salary_senior_min = IntField() # e.g., 120000
+    salary_senior_max = IntField() # e.g., 180000
+
+    # Required skills for this role (list of skill dictionaries)
+    required_skills = ListField(DictField(), default=list)  # [{"skill": "React", "importance": 95}, ...]
+
+    # Experience level required
+    EXPERIENCE_CHOICES = ('entry', 'mid', 'senior')
+    experience_level = StringField(choices=EXPERIENCE_CHOICES, default='entry')
+
+    # Job market data (from API or static)
+    job_openings_count = IntField(default=0)  # Current openings (updated periodically)
+
+    MARKET_DEMAND_CHOICES = ('low', 'medium', 'high', 'very_high')
+    market_demand = StringField(choices=MARKET_DEMAND_CHOICES, default='medium')
+
+    # Career progression
+    next_roles = ListField(StringField(max_length=100), default=list)  # e.g., ["Senior React Developer", "Tech Lead"]
+
+
+class SkillOutcome(EmbeddedDocument):
+    """
+    Skill gained from a module/lesson.
+
+    Tracks what specific skills users will learn from each module.
+    """
+    skill_name = StringField(required=True, max_length=100)
+    skill_category = StringField(max_length=50)  # e.g., "frontend", "backend", "devops"
+
+    PROFICIENCY_CHOICES = ('beginner', 'intermediate', 'advanced')
+    proficiency_level = StringField(choices=PROFICIENCY_CHOICES, default='beginner')
+
+    importance_score = IntField(min_value=0, max_value=100, default=50)  # How critical is this skill
+
+
+class ProjectMilestone(EmbeddedDocument):
+    """
+    Hands-on project milestone in learning path.
+
+    Provides practical, hands-on projects at key points in the learning journey.
+    """
+    milestone_id = StringField(required=True, max_length=100)
+    title = StringField(required=True, max_length=200)
+    description = StringField(max_length=1000)
+    estimated_hours = IntField(min_value=1, default=5)
+
+    # Skills practiced in this project
+    skills_practiced = ListField(StringField(max_length=100), default=list)
+
+    # Module index where this milestone appears (0-indexed)
+    appears_after_module = IntField(default=0)
+
+    # Project resources
+    starter_code_url = StringField(max_length=500)
+    instructions_url = StringField(max_length=500)
+    example_solution_url = StringField(max_length=500)
+
+
+class CareerInsights(EmbeddedDocument):
+    """
+    Career insights for a learning path.
+
+    Comprehensive career information including roles, salaries, job openings,
+    and career progression paths. Combines static data with real-time API data.
+    """
+    # Roles achievable after completing this path
+    career_roles = EmbeddedDocumentListField(CareerRole, default=list)
+
+    # Overall market demand for this path's skills
+    market_demand_score = IntField(min_value=0, max_value=100, default=50)
+
+    # Total job openings across all roles (aggregated)
+    total_job_openings = IntField(default=0)
+
+    # Career progression path (ordered list of role titles)
+    career_progression = ListField(StringField(max_length=100), default=list)
+
+    # Last updated timestamp (for cache invalidation)
+    last_updated = DateTimeField(default=datetime.utcnow)
+
+
 class LearningPath(EmbeddedDocument):
     """Structured learning path with multiple courses and modules"""
 
@@ -91,6 +195,11 @@ class LearningPath(EmbeddedDocument):
     milestones = ListField(DictField(), default=list)  # Achievement milestones
     prerequisites = ListField(StringField(max_length=100), default=list)
 
+    # Phase 3: Career insights and enhanced learning outcomes
+    career_insights = EmbeddedDocumentField(CareerInsights)  # Career opportunities, salaries, job market data
+    skills_gained = EmbeddedDocumentListField(SkillOutcome, default=list)  # Aggregated skills from all modules
+    project_milestones = EmbeddedDocumentListField(ProjectMilestone, default=list)  # Hands-on projects throughout the path
+
     # Path progress tracking
     completion_rate = FloatField(min_value=0.0, max_value=1.0, default=0.0)
     progress_percentage = FloatField(min_value=0.0, max_value=100.0, default=0.0)  # Overall progress
@@ -98,6 +207,11 @@ class LearningPath(EmbeddedDocument):
     started_at = DateTimeField()
     completed_at = DateTimeField()
     last_accessed = DateTimeField()  # Track user engagement
+
+    # Path lifecycle status (Phase 2: Multiple paths support)
+    STATUS_CHOICES = ('active', 'in_progress', 'completed', 'archived')
+    status = StringField(choices=STATUS_CHOICES, default='active', required=True)
+    archived_at = DateTimeField()  # Timestamp when path was archived
 
     # Customization support
     is_customized = BooleanField(default=False)  # Flag for user-customized paths
@@ -635,3 +749,386 @@ class UserContentProfile(Document):
 
     def __str__(self):
         return f"UserContentProfile(user_id={self.user_id}, goals={len(self.learning_goals)})"
+
+
+# ============================================================================
+# PostgreSQL Django ORM Models - Quiz System
+# ============================================================================
+# These models use Django ORM (PostgreSQL) for ACID compliance and relational integrity
+# Quiz data requires transactions, foreign keys, and strong consistency guarantees
+
+
+class LessonQuiz(models.Model):
+    """
+    Quiz linked to a specific lesson in a learning path.
+
+    Generated on-the-fly when user completes a lesson and wants to unlock the next one.
+    Questions are generated from scraped lesson content or metadata.
+    Cached for 30 days to avoid regenerating the same quiz.
+    """
+
+    # Link to learning path and lesson (stored as strings from MongoDB)
+    path_id = models.CharField(
+        max_length=100,
+        db_index=True,
+        help_text="Learning path ID from MongoDB CourseRecommendation"
+    )
+    lesson_id = models.CharField(
+        max_length=200,
+        db_index=True,
+        help_text="Lesson ID within the learning path"
+    )
+
+    # Quiz configuration
+    passing_score_percentage = models.IntegerField(
+        default=70,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Minimum score required to pass (default: 70%)"
+    )
+    num_questions = models.IntegerField(
+        default=5,
+        validators=[MinValueValidator(1), MaxValueValidator(20)],
+        help_text="Number of questions in this quiz"
+    )
+
+    # Content scraping metadata
+    content_scraped = models.BooleanField(
+        default=False,
+        help_text="Whether actual lesson content was scraped for question generation"
+    )
+    content_source = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text="Source of scraped content (youtube_transcript, article, github, metadata)"
+    )
+    scraped_content_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        null=True,
+        help_text="Hash of scraped content to detect changes"
+    )
+
+    # Cache management
+    created_at = models.DateTimeField(auto_now_add=True)
+    cache_until = models.DateTimeField(
+        help_text="When to regenerate this quiz (30 days from creation)"
+    )
+
+    # Metadata
+    lesson_title = models.CharField(max_length=300, blank=True)
+    lesson_platform = models.CharField(max_length=50, blank=True)
+
+    class Meta:
+        db_table = 'learning_content_lesson_quiz'
+        verbose_name = 'Lesson Quiz'
+        verbose_name_plural = 'Lesson Quizzes'
+        indexes = [
+            models.Index(fields=['path_id', 'lesson_id']),
+            models.Index(fields=['cache_until']),
+        ]
+        # Ensure one quiz per lesson (can regenerate after expiry)
+        constraints = [
+            models.UniqueConstraint(
+                fields=['path_id', 'lesson_id'],
+                name='unique_quiz_per_lesson'
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        """Set cache_until to 30 days from now if not set"""
+        if not self.cache_until:
+            self.cache_until = timezone.now() + timedelta(days=30)
+        super().save(*args, **kwargs)
+
+    def is_expired(self):
+        """Check if quiz cache has expired"""
+        return timezone.now() > self.cache_until
+
+    def __str__(self):
+        return f"Quiz for {self.lesson_title or self.lesson_id} ({self.num_questions} questions)"
+
+
+class QuizQuestion(models.Model):
+    """
+    Individual question in a lesson quiz.
+
+    Supports multiple question types: multiple choice, true/false, short answer, code.
+    Generated by QuestionGeneratorService using AI.
+    """
+
+    QUESTION_TYPE_CHOICES = [
+        ('multiple_choice', 'Multiple Choice'),
+        ('true_false', 'True/False'),
+        ('short_answer', 'Short Answer'),
+        ('code', 'Code Question'),
+        ('fill_blank', 'Fill in the Blank'),
+        ('matching', 'Matching'),
+        ('ordering', 'Ordering'),
+    ]
+
+    DIFFICULTY_CHOICES = [
+        ('easy', 'Easy'),
+        ('medium', 'Medium'),
+        ('hard', 'Hard'),
+    ]
+
+    quiz = models.ForeignKey(
+        LessonQuiz,
+        on_delete=models.CASCADE,
+        related_name='questions',
+        help_text="Quiz this question belongs to"
+    )
+
+    # Question order within quiz
+    order = models.IntegerField(
+        default=0,
+        help_text="Display order (0-indexed)"
+    )
+
+    # Question content
+    question_text = models.TextField(
+        help_text="The question text"
+    )
+    question_type = models.CharField(
+        max_length=20,
+        choices=QUESTION_TYPE_CHOICES,
+        default='multiple_choice'
+    )
+
+    # Answer options (JSON for flexibility)
+    # For MC: {"options": ["A", "B", "C", "D"], "correct_index": 0}
+    # For T/F: {"correct": true}
+    # For short: {"keywords": ["key1", "key2"], "exact_match": false}
+    # For code: {"test_cases": [...], "language": "python"}
+    options = models.JSONField(
+        default=dict,
+        help_text="Question options and correct answer (structure varies by type)"
+    )
+
+    # Correct answer (for grading)
+    correct_answer = models.TextField(
+        help_text="Correct answer or grading criteria"
+    )
+
+    # Educational metadata
+    explanation = models.TextField(
+        blank=True,
+        help_text="Explanation shown after answering (right or wrong)"
+    )
+    difficulty = models.CharField(
+        max_length=10,
+        choices=DIFFICULTY_CHOICES,
+        default='medium'
+    )
+
+    # Bloom's taxonomy level for question complexity
+    blooms_level = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="remember, understand, apply, analyze, evaluate, create"
+    )
+
+    # Points assigned to this question (for weighted scoring)
+    points = models.IntegerField(
+        default=1,
+        validators=[MinValueValidator(1)],
+        help_text="Points for this question (default: 1)"
+    )
+
+    class Meta:
+        db_table = 'learning_content_quiz_question'
+        verbose_name = 'Quiz Question'
+        verbose_name_plural = 'Quiz Questions'
+        ordering = ['order']
+        indexes = [
+            models.Index(fields=['quiz', 'order']),
+        ]
+
+    def __str__(self):
+        return f"Q{self.order + 1}: {self.question_text[:50]}..."
+
+
+class QuizAttempt(models.Model):
+    """
+    User's attempt at a quiz.
+
+    Tracks each time a user takes a quiz, supports unlimited retakes.
+    Best score is tracked across all attempts.
+    """
+
+    STATUS_CHOICES = [
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+        ('abandoned', 'Abandoned'),
+    ]
+
+    quiz = models.ForeignKey(
+        LessonQuiz,
+        on_delete=models.CASCADE,
+        related_name='attempts',
+        help_text="Quiz being attempted"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='quiz_attempts',
+        help_text="User taking the quiz"
+    )
+
+    # Attempt metadata
+    attempt_number = models.IntegerField(
+        default=1,
+        help_text="Which attempt is this (1, 2, 3...)"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='in_progress'
+    )
+
+    # Timing
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(blank=True, null=True)
+    time_taken_seconds = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text="Total time taken to complete (seconds)"
+    )
+
+    # Scoring
+    score_percentage = models.FloatField(
+        default=0.0,
+        validators=[MinValueValidator(0.0), MaxValueValidator(100.0)],
+        help_text="Score as percentage (0-100)"
+    )
+    total_points_earned = models.IntegerField(default=0)
+    total_points_possible = models.IntegerField(default=0)
+    passed = models.BooleanField(
+        default=False,
+        help_text="Whether user passed (score >= passing_score_percentage)"
+    )
+
+    # Best attempt tracking (denormalized for performance)
+    is_best_attempt = models.BooleanField(
+        default=False,
+        help_text="Is this the user's best scoring attempt?"
+    )
+
+    class Meta:
+        db_table = 'learning_content_quiz_attempt'
+        verbose_name = 'Quiz Attempt'
+        verbose_name_plural = 'Quiz Attempts'
+        ordering = ['-started_at']
+        indexes = [
+            models.Index(fields=['user', 'quiz']),
+            models.Index(fields=['user', '-started_at']),
+            models.Index(fields=['quiz', 'user', '-attempt_number']),
+        ]
+
+    def save(self, *args, **kwargs):
+        """Auto-calculate time taken and passed status"""
+        # Calculate time taken if completed
+        if self.status == 'completed' and self.completed_at and not self.time_taken_seconds:
+            self.time_taken_seconds = int((self.completed_at - self.started_at).total_seconds())
+
+        # Determine if passed
+        if self.status == 'completed':
+            self.passed = self.score_percentage >= self.quiz.passing_score_percentage
+
+        super().save(*args, **kwargs)
+
+        # Update is_best_attempt flag for this user/quiz combination
+        if self.status == 'completed':
+            self._update_best_attempt()
+
+    def _update_best_attempt(self):
+        """Mark this as best attempt if it has the highest score"""
+        # Get all completed attempts for this user/quiz
+        all_attempts = QuizAttempt.objects.filter(
+            user=self.user,
+            quiz=self.quiz,
+            status='completed'
+        ).order_by('-score_percentage')
+
+        # Clear all is_best_attempt flags
+        all_attempts.update(is_best_attempt=False)
+
+        # Set the highest scoring attempt as best
+        if all_attempts.exists():
+            best = all_attempts.first()
+            best.is_best_attempt = True
+            QuizAttempt.objects.filter(pk=best.pk).update(is_best_attempt=True)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.quiz.lesson_title} - Attempt {self.attempt_number} ({self.score_percentage:.1f}%)"
+
+
+class QuestionResponse(models.Model):
+    """
+    User's response to a single question within a quiz attempt.
+
+    Stores the answer, whether it was correct, and points earned.
+    """
+
+    attempt = models.ForeignKey(
+        QuizAttempt,
+        on_delete=models.CASCADE,
+        related_name='responses',
+        help_text="Quiz attempt this response belongs to"
+    )
+    question = models.ForeignKey(
+        QuizQuestion,
+        on_delete=models.CASCADE,
+        related_name='responses',
+        help_text="Question being answered"
+    )
+
+    # User's answer (format varies by question type)
+    user_answer = models.TextField(
+        blank=True,
+        help_text="User's answer (text, index, JSON for complex answers)"
+    )
+
+    # Grading results
+    is_correct = models.BooleanField(
+        default=False,
+        help_text="Whether the answer was correct"
+    )
+    points_earned = models.IntegerField(
+        default=0,
+        help_text="Points earned for this answer"
+    )
+
+    # Timing
+    answered_at = models.DateTimeField(auto_now_add=True)
+    time_taken_seconds = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text="Time taken to answer this question"
+    )
+
+    # AI grading feedback (for short answer/code questions)
+    ai_feedback = models.TextField(
+        blank=True,
+        help_text="AI-generated feedback on the answer"
+    )
+
+    class Meta:
+        db_table = 'learning_content_question_response'
+        verbose_name = 'Question Response'
+        verbose_name_plural = 'Question Responses'
+        ordering = ['question__order']
+        indexes = [
+            models.Index(fields=['attempt', 'question']),
+        ]
+        # Each question can only be answered once per attempt
+        constraints = [
+            models.UniqueConstraint(
+                fields=['attempt', 'question'],
+                name='unique_response_per_attempt_question'
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.attempt.user.username} - Q{self.question.order + 1} - {'✓' if self.is_correct else '✗'}"

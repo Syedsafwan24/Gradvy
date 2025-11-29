@@ -29,6 +29,7 @@ from utils.responses import APISuccess, APIError, APIValidationError, StatusCode
 try:
     from ml_services.services.learning_path_service import LearningPathService, LearningPathRequest
     from ml_services.integrations import RoadmapService, CourseSearchService
+    from ml_services.services.career_insights_service import get_career_insights_service
     ML_SERVICES_AVAILABLE = True
 except ImportError:
     ML_SERVICES_AVAILABLE = False
@@ -36,6 +37,300 @@ except ImportError:
 
 # Initialize logger
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Quiz System Helper Functions
+# ============================================================================
+# Module-level helper functions for computing lesson lock states and quiz stats
+
+
+def _is_lesson_completed(lesson_id: str, user) -> bool:
+    """
+    Check if a lesson is completed by the user.
+
+    A lesson is completed if:
+    - It exists in UserContentProfile.completed_courses, OR
+    - It exists in UserContentProfile.in_progress_content with 100% progress
+
+    Args:
+        lesson_id: Lesson ID to check
+        user: Django user instance
+
+    Returns:
+        True if lesson is completed, False otherwise
+    """
+    try:
+        # Get user's content profile
+        content_profile = UserContentProfile.get_by_user_id(user.id)
+        if not content_profile:
+            return False
+
+        # Check completed_courses list
+        for completed in content_profile.completed_courses:
+            if completed.get('course_id') == lesson_id:
+                return True
+
+        # Check in_progress_content for 100% completion
+        for in_progress in content_profile.in_progress_content:
+            if (in_progress.get('content_id') == lesson_id and
+                in_progress.get('progress_percentage', 0.0) >= 100.0):
+                return True
+
+        return False
+
+    except Exception as e:
+        logger.error(f"Error checking lesson completion for lesson_id={lesson_id}, user={user.id}: {e}")
+        return False
+
+
+def _get_quiz_stats(path_id: str, lesson_id: str, user) -> Dict[str, Any]:
+    """
+    Get quiz statistics for a specific lesson.
+
+    Returns quiz metadata and user's attempt history including:
+    - Whether quiz exists
+    - Total attempts by user
+    - Best score percentage
+    - Whether user has passed (score >= passing_score_percentage)
+    - Passing score requirement
+
+    Args:
+        path_id: Learning path ID
+        lesson_id: Lesson ID within the path
+        user: Django user instance
+
+    Returns:
+        Dictionary with quiz stats or None if quiz doesn't exist
+    """
+    from apps.learning_content.models import LessonQuiz, QuizAttempt
+
+    try:
+        # Try to get quiz for this lesson
+        try:
+            quiz = LessonQuiz.objects.get(path_id=path_id, lesson_id=lesson_id)
+        except LessonQuiz.DoesNotExist:
+            # No quiz exists for this lesson
+            return {
+                'quiz_exists': False,
+                'quiz_required': False,
+                'quiz_completed': False,
+                'quiz_passed': False,
+                'best_score': None,
+                'total_attempts': 0,
+                'passing_score_percentage': 70
+            }
+
+        # Get all completed attempts for this user
+        attempts = QuizAttempt.objects.filter(
+            quiz=quiz,
+            user=user,
+            status='completed'
+        ).order_by('-score_percentage')
+
+        total_attempts = attempts.count()
+        best_attempt = attempts.first() if total_attempts > 0 else None
+
+        best_score = best_attempt.score_percentage if best_attempt else None
+        passed = best_attempt.passed if best_attempt else False
+
+        return {
+            'quiz_exists': True,
+            'quiz_required': True,  # All lessons with quizzes require completion
+            'quiz_completed': total_attempts > 0,
+            'quiz_passed': passed,
+            'best_score': best_score,
+            'total_attempts': total_attempts,
+            'passing_score_percentage': quiz.passing_score_percentage,
+            'quiz_id': quiz.id
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting quiz stats for lesson_id={lesson_id}, user={user.id}: {e}")
+        return {
+            'quiz_exists': False,
+            'quiz_required': False,
+            'quiz_completed': False,
+            'quiz_passed': False,
+            'best_score': None,
+            'total_attempts': 0,
+            'passing_score_percentage': 70
+        }
+
+
+def _compute_lesson_lock_state(
+    path_id: str,
+    lesson_id: str,
+    user,
+    learning_path: Optional['LearningPath'] = None
+) -> Dict[str, Any]:
+    """
+    Compute lock state for a lesson using strict sequential locking.
+
+    Lock Rules (Strict Sequential):
+    - First lesson in first module: ALWAYS UNLOCKED
+    - Lesson N: LOCKED until lesson N-1 is both:
+      1. Completed (100% progress)
+      2. Quiz passed (if quiz exists for lesson N-1)
+
+    Args:
+        path_id: Learning path ID
+        lesson_id: Lesson ID to check
+        user: Django user instance
+        learning_path: Optional LearningPath object (to avoid re-fetching)
+
+    Returns:
+        Dictionary with lock state information:
+        {
+            'is_locked': bool,
+            'lock_reason': str,
+            'requires_lesson_id': str or None,
+            'requires_lesson_title': str or None,
+            'requires_quiz_pass': bool,
+            'quiz_required': bool,  # Does THIS lesson have a quiz?
+            'quiz_stats': dict  # Quiz stats for THIS lesson
+        }
+    """
+    try:
+        # Find this lesson in the learning path
+        if not learning_path:
+            # Fetch learning path from CourseRecommendation
+            try:
+                from apps.learning_content.models import CourseRecommendation
+                course_rec = CourseRecommendation.objects.get(user_id=user.id)
+                learning_path = next(
+                    (path for path in course_rec.learning_paths if path.path_id == path_id),
+                    None
+                )
+                if not learning_path:
+                    logger.warning(f"Learning path {path_id} not found for user {user.id}")
+                    return {
+                        'is_locked': True,
+                        'lock_reason': 'Learning path not found',
+                        'requires_lesson_id': None,
+                        'requires_lesson_title': None,
+                        'requires_quiz_pass': False,
+                        'quiz_required': False,
+                        'quiz_stats': {}
+                    }
+            except CourseRecommendation.DoesNotExist:
+                logger.warning(f"CourseRecommendation not found for user {user.id}")
+                return {
+                    'is_locked': True,
+                    'lock_reason': 'Course recommendation not found',
+                    'requires_lesson_id': None,
+                    'requires_lesson_title': None,
+                    'requires_quiz_pass': False,
+                    'quiz_required': False,
+                    'quiz_stats': {}
+                }
+
+        # Find the current lesson and previous lesson
+        all_lessons = []
+        for module in learning_path.modules:
+            lessons = module.get('lessons', [])
+            for lesson in lessons:
+                all_lessons.append({
+                    'lesson_id': lesson.get('lesson_id'),
+                    'lesson_title': lesson.get('title'),
+                    'module_id': module.get('module_id'),
+                    'module_title': module.get('title')
+                })
+
+        # Find index of current lesson
+        current_index = None
+        for i, lesson in enumerate(all_lessons):
+            if lesson['lesson_id'] == lesson_id:
+                current_index = i
+                break
+
+        if current_index is None:
+            logger.warning(f"Lesson {lesson_id} not found in path {path_id}")
+            return {
+                'is_locked': True,
+                'lock_reason': 'Lesson not found in learning path',
+                'requires_lesson_id': None,
+                'requires_lesson_title': None,
+                'requires_quiz_pass': False,
+                'quiz_required': False,
+                'quiz_stats': {}
+            }
+
+        # Get quiz stats for THIS lesson
+        quiz_stats = _get_quiz_stats(path_id, lesson_id, user)
+
+        # RULE: First lesson is always unlocked
+        if current_index == 0:
+            return {
+                'is_locked': False,
+                'lock_reason': '',
+                'requires_lesson_id': None,
+                'requires_lesson_title': None,
+                'requires_quiz_pass': False,
+                'quiz_required': quiz_stats['quiz_required'],
+                'quiz_stats': quiz_stats
+            }
+
+        # RULE: Lesson N locked until lesson N-1 completed + quiz passed
+        prev_lesson = all_lessons[current_index - 1]
+        prev_lesson_id = prev_lesson['lesson_id']
+        prev_lesson_title = prev_lesson['lesson_title']
+
+        # Check if previous lesson is completed
+        prev_completed = _is_lesson_completed(prev_lesson_id, user)
+
+        # Check if previous lesson's quiz (if exists) is passed
+        prev_quiz_stats = _get_quiz_stats(path_id, prev_lesson_id, user)
+        prev_quiz_required = prev_quiz_stats['quiz_exists']
+        prev_quiz_passed = prev_quiz_stats['quiz_passed']
+
+        # Determine lock state
+        if not prev_completed:
+            # Previous lesson not completed
+            return {
+                'is_locked': True,
+                'lock_reason': f'Complete "{prev_lesson_title}" to unlock this lesson',
+                'requires_lesson_id': prev_lesson_id,
+                'requires_lesson_title': prev_lesson_title,
+                'requires_quiz_pass': False,
+                'quiz_required': quiz_stats['quiz_required'],
+                'quiz_stats': quiz_stats
+            }
+        elif prev_quiz_required and not prev_quiz_passed:
+            # Previous lesson completed but quiz not passed
+            return {
+                'is_locked': True,
+                'lock_reason': f'Pass the quiz for "{prev_lesson_title}" to unlock this lesson',
+                'requires_lesson_id': prev_lesson_id,
+                'requires_lesson_title': prev_lesson_title,
+                'requires_quiz_pass': True,
+                'quiz_required': quiz_stats['quiz_required'],
+                'quiz_stats': quiz_stats
+            }
+        else:
+            # Previous lesson completed and quiz passed (or no quiz) - UNLOCKED
+            return {
+                'is_locked': False,
+                'lock_reason': '',
+                'requires_lesson_id': None,
+                'requires_lesson_title': None,
+                'requires_quiz_pass': False,
+                'quiz_required': quiz_stats['quiz_required'],
+                'quiz_stats': quiz_stats
+            }
+
+    except Exception as e:
+        logger.error(f"Error computing lock state for lesson_id={lesson_id}, user={user.id}: {e}", exc_info=True)
+        # Default to locked on error for safety
+        return {
+            'is_locked': True,
+            'lock_reason': 'Error determining lock state',
+            'requires_lesson_id': None,
+            'requires_lesson_title': None,
+            'requires_quiz_pass': False,
+            'quiz_required': False,
+            'quiz_stats': {}
+        }
 
 
 class GenerateLearningPathView(APIView):
@@ -70,7 +365,9 @@ class GenerateLearningPathView(APIView):
             'linkedin': 'https://via.placeholder.com/320x180/0077B5/FFFFFF?text=LinkedIn+Learning',
             'default': 'https://via.placeholder.com/320x180/6B7280/FFFFFF?text=Course'
         }
-        return defaults.get(platform.lower(), defaults['default'])
+        # Handle None platform gracefully
+        platform_key = platform.lower() if platform else 'default'
+        return defaults.get(platform_key, defaults['default'])
 
     @staticmethod
     def _determine_lesson_type(platform: str, learning_styles: List[str]) -> str:
@@ -121,8 +418,9 @@ class GenerateLearningPathView(APIView):
             'project_preview': 'project'
         }
 
-        # Get platform's default type
-        default_type = platform_types.get(platform.lower(), 'article')
+        # Get platform's default type (handle None platform gracefully)
+        platform_key = platform.lower() if platform else 'default'
+        default_type = platform_types.get(platform_key, 'article')
 
         # Override based on user's learning style preferences
         # This ensures the type matches what the user actually wants
@@ -135,7 +433,7 @@ class GenerateLearningPathView(APIView):
             if platform in ['udemy', 'coursera']:
                 return 'project'  # These platforms offer project-based courses
             return 'interactive'
-        elif 'reading' in learning_styles:
+        elif 'reading' in learning_styles or 'articles' in learning_styles:  # Support both for backward compatibility
             # User wants reading material - prefer article type
             return 'article'
         elif 'interactive' in learning_styles:
@@ -306,19 +604,22 @@ class GenerateLearningPathView(APIView):
     def calculate_dynamic_module_count(
         user_preferences: Dict,
         roadmap,  # Full roadmap object for intelligent analysis
-        request_override: Optional[int] = None
+        request_override: Optional[int] = None,
+        user_profile: Optional['UserContentProfile'] = None  # PHASE 3: Dropout risk adaptation
     ) -> int:
         """
-        ML-driven dynamic module count calculation.
+        ML-driven dynamic module count calculation with dropout risk adaptation.
 
         Uses intelligent analysis of:
         1. Roadmap structure complexity (topic count, dependencies, skills, content depth)
         2. User learning capacity (time, experience, pace, timeline, goals)
-        3. Configurable bounds from Django settings
-        4. Optional user override
+        3. [PHASE 3] Dropout risk adaptation (high risk → -30%, medium risk → -15%)
+        4. Configurable bounds from Django settings
+        5. Optional user override
 
         This replaces the old hardcoded lookup tables (6/10/12) with a truly adaptive algorithm
-        that considers roadmap complexity and user profile to generate varied, intelligent module counts.
+        that considers roadmap complexity, user profile, and dropout risk to generate varied,
+        intelligent module counts that maximize completion rates.
 
         Returns:
             int: Optimal module count (typically 4-20, varies based on analysis)
@@ -361,7 +662,29 @@ class GenerateLearningPathView(APIView):
         variance = GenerateLearningPathView.calculate_deterministic_variance(user_preferences)
         final_count_with_variance = max(MIN_MODULES, min(final_count + variance, max_from_roadmap, MAX_MODULES))
 
+        # PHASE 3 - Step 7: Dropout risk adaptation
+        # Users at high risk of dropping out get shorter, more achievable paths
+        dropout_reduction = 0.0
+        dropout_risk = 0.0
+        if user_profile and hasattr(user_profile, 'dropout_risk_score') and user_profile.dropout_risk_score is not None:
+            dropout_risk = user_profile.dropout_risk_score
+            if dropout_risk >= 0.7:
+                # High risk: reduce by 30% to create achievable, confidence-building path
+                dropout_reduction = 0.30
+                logger.warning(f"⚠️ High dropout risk ({dropout_risk:.2f}) detected → reducing modules by 30%")
+            elif dropout_risk >= 0.5:
+                # Medium risk: reduce by 15% to prevent overwhelm
+                dropout_reduction = 0.15
+                logger.info(f"⚡ Medium dropout risk ({dropout_risk:.2f}) → reducing modules by 15%")
+
+        # Apply dropout risk reduction
+        if dropout_reduction > 0:
+            reduced_count = int(final_count_with_variance * (1 - dropout_reduction))
+            final_count_with_variance = max(MIN_MODULES, reduced_count)
+            logger.info(f"📉 Dropout adaptation applied: {final_count + variance} → {final_count_with_variance} modules")
+
         # Intelligent logging for transparency
+        dropout_info = f"\n           • Dropout Risk: {dropout_risk:.2f} (reduction: {dropout_reduction*100:.0f}%)" if dropout_risk > 0 else ""
         logger.info(f"""
         🧠 ML-Driven Module Count Calculation:
            Roadmap Analysis:
@@ -369,7 +692,7 @@ class GenerateLearningPathView(APIView):
            • Complexity Score: {complexity_score:.2f} (0=simple, 1=complex)
 
            User Profile:
-           • Capacity Score: {capacity_score:.2f} (higher = can handle more)
+           • Capacity Score: {capacity_score:.2f} (higher = can handle more){dropout_info}
 
            Calculation:
            • Optimal Formula: {MIN_MODULES} + ({range_size} × {complexity_score:.2f} × {min(capacity_score, 1.5):.2f}) = {optimal_modules:.1f}
@@ -385,23 +708,27 @@ class GenerateLearningPathView(APIView):
         user_preferences: Dict,
         module_index: int,
         total_modules: int,
-        request_override: Optional[int] = None
+        request_override: Optional[int] = None,
+        user_profile: Optional['UserContentProfile'] = None  # PHASE 3: Session duration optimization
     ) -> int:
         """
-        PHASE 2: ADAPTIVE pacing - Calculate lessons per module dynamically.
+        PHASE 2 & 3: ADAPTIVE pacing - Calculate lessons per module dynamically.
 
         Considers:
         1. User's time availability (1-2hrs → fewer lessons, 5+hrs → more lessons)
         2. Skill level (beginners → fewer lessons to avoid overwhelm, advanced → more)
         3. Preferred pace as a multiplier
         4. Module position (early modules +1 for foundation, late modules -1 for focus)
+        5. [PHASE 3] Session duration (< 20 min → -1 lesson, 60+ min → +1 lesson)
+        6. [PHASE 3] Attention span (< 15 min → reduce lessons to avoid cognitive overload)
 
         Range: 2-10 lessons per module (configurable via settings)
 
         Examples:
         - Beginner, 1-2hrs, slow pace, module 1/10 → 3 lessons (2 base + 1 for early)
         - Intermediate, 3-5hrs, medium pace, module 5/10 → 5 lessons
-        - Advanced, 5+hrs, fast pace, module 10/10 → 8 lessons (9 - 1 for late)
+        - Advanced, 5+hrs, fast pace, 60min sessions, module 10/10 → 9 lessons (9 - 1 late + 1 long session)
+        - Beginner, 1-2hrs, 15min sessions, short attention → 2 lessons (minimum, bite-sized)
         """
         # Get configurable bounds from Django settings
         MIN_LESSONS = settings.LEARNING_PATH_MIN_LESSONS
@@ -441,6 +768,26 @@ class GenerateLearningPathView(APIView):
         # Calculate base lessons with time and skill factors
         base_lessons = time_base + skill_adjustment
         base_lessons = int(base_lessons * pace_multiplier)
+
+        # PHASE 3 - Factor 4.5: Session duration optimization
+        # Users with short sessions need bite-sized lessons
+        # Users with long sessions can handle deeper dives
+        if user_profile and hasattr(user_profile, 'average_session_duration') and user_profile.average_session_duration:
+            session_minutes = user_profile.average_session_duration
+            if session_minutes < 20:
+                base_lessons -= 1  # Short sessions (< 20 min) → fewer lessons for quick wins
+                logger.debug(f"📱 Short session duration ({session_minutes} min) → reducing lessons by 1")
+            elif session_minutes >= 60:
+                base_lessons += 1  # Long sessions (60+ min) → more lessons for deep learning
+                logger.debug(f"⏱️ Long session duration ({session_minutes} min) → adding 1 lesson")
+
+        # PHASE 3 - Factor 4.6: Attention span consideration
+        # Users with short attention spans need smaller chunks
+        if user_profile and hasattr(user_profile, 'attention_span_minutes') and user_profile.attention_span_minutes:
+            attention = user_profile.attention_span_minutes
+            if attention < 15:
+                base_lessons = max(2, base_lessons - 1)  # Very short attention → reduce lessons (min 2)
+                logger.debug(f"🎯 Short attention span ({attention} min) → reducing to {base_lessons} lessons")
 
         # Factor 4: Module position adjustment
         # Early modules (first 33%) get +1 lesson (more foundational content)
@@ -656,8 +1003,11 @@ class GenerateLearningPathView(APIView):
             roadmap_service = RoadmapService()
             course_search_service = CourseSearchService()
 
-            # Fetch roadmap for user's primary learning goal
-            roadmap = roadmap_service.get_roadmap_for_preferences(user_preferences_dict)
+            # PHASE 3: Fetch and merge roadmaps for all learning goals (multi-goal support)
+            roadmap = roadmap_service.get_merged_roadmap_for_goals(
+                generation_request.learning_goals,
+                user_preferences_dict
+            )
 
             if not roadmap:
                 # Return error if no roadmap found
@@ -682,6 +1032,7 @@ class GenerateLearningPathView(APIView):
             except UserContentProfile.DoesNotExist:
                 # No profile yet - user is complete beginner
                 current_skills = []
+                user_profile = None  # Initialize to None for new users without a profile
                 logger.info(f"🎯 No content profile found - assuming beginner with no current skills")
 
             # Apply skill gap analysis if user has any skills
@@ -709,20 +1060,35 @@ class GenerateLearningPathView(APIView):
 
             # Calculate dynamic module count using ML-driven intelligent analysis
             # Analyzes roadmap structure + user profile for truly adaptive module count
+            # PHASE 3: Now includes dropout risk adaptation to maximize completion rates
             dynamic_module_count = self.calculate_dynamic_module_count(
                 user_preferences=user_preferences_dict,
                 roadmap=filtered_roadmap,  # Pass full roadmap for intelligent analysis
-                request_override=max_modules_override
+                request_override=max_modules_override,
+                user_profile=user_profile  # PHASE 3: Pass profile for dropout risk adaptation
             )
 
-            # Iterate through dynamically calculated number of modules
-            for idx, node in enumerate(filtered_roadmap.nodes[:dynamic_module_count], 1):
+            # PHASE 3: Priority-based module selection (not just first N modules)
+            # Select optimal modules based on target_skills, goal alignment, career fit, etc.
+            selected_modules = roadmap_service.select_optimal_modules(
+                filtered_roadmap,
+                user_preferences_dict,
+                user_profile,  # UserContentProfile with target_skills, struggle_areas, etc.
+                dynamic_module_count
+            )
+
+            logger.info(f"📊 Selected {len(selected_modules)} high-priority modules for learning path")
+
+            # Iterate through intelligently selected modules
+            for idx, node in enumerate(selected_modules, 1):
                 # Calculate dynamic lesson count for this module based on pace and position
+                # PHASE 3: Now includes session duration and attention span optimization
                 dynamic_lesson_count = self.calculate_lessons_per_module(
                     user_preferences=user_preferences_dict,
                     module_index=idx - 1,  # 0-indexed for calculation
                     total_modules=dynamic_module_count,
-                    request_override=max_lessons_override
+                    request_override=max_lessons_override,
+                    user_profile=user_profile  # PHASE 3: Pass profile for session duration/attention span
                 )
 
                 # Enrich search query with user preferences (difficulty, learning style, duration, goal context)
@@ -734,12 +1100,18 @@ class GenerateLearningPathView(APIView):
                     node_context={'difficulty': node.difficulty, 'category': node.category}
                 )
 
-                # Search for courses using enriched query and dynamic lesson count
-                scored_courses = course_search_service.search_courses(
+                # Search for courses using enriched query with progressive fallback
+                # BUG FIX: Uses search_courses_with_fallback() to prevent empty modules
+                scored_courses = course_search_service.search_courses_with_fallback(
                     topic=enriched_query,  # Use enriched query instead of bare node.title
                     user_preferences=user_preferences_dict,
                     max_results=dynamic_lesson_count  # Use dynamic count instead of hardcoded 5
                 )
+
+                # BUG FIX: Validate courses were found - skip module if empty
+                if not scored_courses:
+                    logger.warning(f"⚠️ No courses found for module '{node.title}' even after fallback - skipping module")
+                    continue  # Skip to next module
 
                 # Build lessons from dynamically calculated number of courses
                 lessons = []
@@ -753,19 +1125,23 @@ class GenerateLearningPathView(APIView):
                         generation_request.learning_styles
                     )
 
+                    # Handle duration - GitHub repos and some platforms don't have duration_hours
+                    duration_hours = getattr(course, 'duration_hours', None)
+                    duration_minutes = int(duration_hours * 60) if duration_hours else 60  # Default to 1 hour for repos/articles
+
                     lessons.append({
                         'lesson_id': f"{node.id}-lesson-{len(lessons) + 1}",
                         'title': course.title,
                         'description': course.description,
                         'type': lesson_type,  # Now respects user's content preferences!
-                        'duration_minutes': int(course.duration_hours * 60),
+                        'duration_minutes': duration_minutes,
                         'url': course.url,
                         'thumbnail': course.thumbnail_url or self._get_default_thumbnail(course.platform),
                         'platform': course.platform,
-                        'instructor': course.instructor,
-                        'rating': course.rating,
-                        'difficulty': course.difficulty,
-                        'price': course.price,
+                        'instructor': getattr(course, 'instructor', None),
+                        'rating': getattr(course, 'rating', None),
+                        'difficulty': getattr(course, 'difficulty', None),
+                        'price': getattr(course, 'price', None),
                         'relevance_score': scored_course.relevance_score,
                         'is_completed': False,
                         'order': len(lessons) + 1
@@ -788,14 +1164,26 @@ class GenerateLearningPathView(APIView):
                     'is_completed': False,
                     'prerequisites': node.prerequisites
                 }
-                modules_data.append(module)
+
+                # BUG FIX: Only add module if it has lessons (defense in depth)
+                if lessons:
+                    modules_data.append(module)
+                else:
+                    logger.warning(f"⚠️ Module '{node.title}' has no lessons - excluding from learning path")
+                    # Adjust total_duration back since we're not adding this module
+                    total_duration -= module_duration
 
             # Create learning path metadata
             # VALIDATION: Ensure minimum duration to pass MongoEngine validation (min_value=1)
-            validated_duration = max(10, round(total_duration, 1)) if total_duration < 1 else round(total_duration, 1)
-
+            # If no content found (duration = 0), set to 1 hour minimum instead of arbitrary 10 hours
             if total_duration < 1:
-                logger.warning(f"⚠️ Learning path has invalid duration {total_duration}, setting to 10 hours to prevent validation error")
+                validated_duration = 1.0
+                if total_duration == 0:
+                    logger.warning("⚠️ Learning path has no content (0 lessons found). Duration set to 1 hour minimum.")
+                else:
+                    logger.warning(f"⚠️ Learning path has very short duration {total_duration}h, setting to 1 hour minimum to pass validation.")
+            else:
+                validated_duration = round(total_duration, 1)
 
             learning_path_data = {
                 'path_id': f"lp-{request.user.id}-{int(datetime.utcnow().timestamp())}",
@@ -817,6 +1205,51 @@ class GenerateLearningPathView(APIView):
                 'message': 'Some courses are preview data. Configure YouTube/Udemy API keys for real courses.' if uses_preview_data else 'All courses are from real platforms.'
             }
 
+            # Step 4.5: Phase 3 - Generate career insights and enhancements
+            logger.info(f"🎯 Phase 3: Generating career insights and learning outcomes...")
+
+            career_service = get_career_insights_service()
+
+            # Generate career insights
+            learning_goals_str = ', '.join(generation_request.learning_goals)
+            # Location field may not exist in basic_info, use empty string as fallback
+            user_location = getattr(basic_info, 'location', '')
+
+            career_insights = career_service.generate_career_insights(
+                learning_goals=learning_goals_str,
+                modules=modules_data,
+                user_location=user_location
+            )
+
+            # Extract skills gained from modules
+            skills_gained = career_service.extract_skills_from_modules(modules_data)
+
+            # Generate project milestones
+            domain = career_service.map_learning_goals_to_career_domain(learning_goals_str)
+            project_milestones = career_service.generate_project_milestones(
+                modules=modules_data,
+                domain=domain
+            )
+
+            # Add learning outcomes to each module using roadmap service
+            roadmap_service = RoadmapService()
+            for module in modules_data:
+                learning_outcomes = roadmap_service.generate_module_learning_outcomes(
+                    module_title=module.get('title', ''),
+                    module_description=module.get('description', ''),
+                    difficulty=module.get('difficulty', 'intermediate'),
+                    lessons=module.get('lessons', [])
+                )
+                module['learning_outcomes'] = learning_outcomes
+
+            logger.info(
+                f"✅ Phase 3 complete: "
+                f"{len(career_insights.career_roles)} roles, "
+                f"{career_insights.total_job_openings} jobs, "
+                f"{len(skills_gained)} skills, "
+                f"{len(project_milestones)} milestones"
+            )
+
             # Step 5: Save to MongoDB with smart caching using preference hash
             # Learning path is saved for persistence and retrieval
             # Cache invalidation happens automatically via preference hash comparison
@@ -828,18 +1261,23 @@ class GenerateLearningPathView(APIView):
                 description=learning_path_data.get('description', ''),
                 estimated_duration_hours=learning_path_data.get('estimated_duration_hours', round(total_duration, 1) if total_duration > 0 else 40),
                 difficulty_level=learning_path_data.get('difficulty_level', generation_request.experience_level),
-                modules=modules_data,  # New module-based structure
+                modules=modules_data,  # New module-based structure (now includes learning_outcomes)
                 course_sequence=[],  # Legacy field
                 prerequisites=learning_path_data.get('prerequisites', []),
                 created_by='ai',
+                status='active',  # Phase 2: Set initial status for new learning paths
+                # Phase 3: Career insights and enhancements
+                career_insights=career_insights,
+                skills_gained=skills_gained,
+                project_milestones=project_milestones,
             )
 
             # Save to MongoDB with preference hash for smart cache invalidation
             try:
                 course_recommendation = CourseRecommendation.objects.get(user_id=request.user.id)
                 created = False
-                # Clear old paths and update expiry
-                course_recommendation.learning_paths = []
+                # BUG FIX: DON'T clear existing paths - preserve for multiple learning paths support
+                # Just update expiry timestamp to extend cache
                 course_recommendation.expires_at = datetime.utcnow() + timedelta(hours=24)  # Cache for 24 hours
             except CourseRecommendation.DoesNotExist:
                 course_recommendation = CourseRecommendation(
@@ -1083,23 +1521,126 @@ class LearningPathDetailView(APIView):
             )
 
     def _enrich_with_detailed_progress(self, learning_path: LearningPath, content_profile: UserContentProfile) -> Dict[str, Any]:
-        """Add detailed progress data at module and lesson levels"""
-        # TODO: Implement detailed progress calculation
-        # For now, return basic structure
+        """
+        Add detailed progress data and lock states at module and lesson levels.
+
+        For each lesson, computes:
+        - Completion status
+        - Progress percentage
+        - Lock state (is_locked, requires_lesson_id, etc.)
+        - Quiz information (required, passed, best_score)
+        """
+        # Create a deep copy of modules to avoid modifying original
+        enriched_modules = []
+
+        for module in learning_path.modules:
+            module_dict = dict(module)  # Convert to dict if EmbeddedDocument
+            enriched_lessons = []
+
+            lessons = module.get('lessons', [])
+            for lesson in lessons:
+                lesson_dict = dict(lesson)  # Convert to dict if needed
+                lesson_id = lesson.get('lesson_id')
+
+                # Get completion status
+                is_completed = _is_lesson_completed(lesson_id, self.request.user) if content_profile else False
+
+                # Get progress percentage from UserContentProfile
+                progress_pct = 0.0
+                if content_profile:
+                    for in_prog in content_profile.in_progress_content:
+                        if in_prog.get('content_id') == lesson_id:
+                            progress_pct = in_prog.get('progress_percentage', 0.0)
+                            break
+
+                # Compute lock state for this lesson
+                lock_state = _compute_lesson_lock_state(
+                    path_id=learning_path.path_id,
+                    lesson_id=lesson_id,
+                    user=self.request.user,
+                    learning_path=learning_path
+                )
+
+                # Add enrichment fields to lesson
+                lesson_dict['completed'] = is_completed
+                lesson_dict['progress_percentage'] = progress_pct
+                lesson_dict['is_locked'] = lock_state['is_locked']
+                lesson_dict['lock_reason'] = lock_state.get('lock_reason', '')
+                lesson_dict['requires_lesson_id'] = lock_state.get('requires_lesson_id')
+                lesson_dict['requires_lesson_title'] = lock_state.get('requires_lesson_title')
+                lesson_dict['requires_quiz_pass'] = lock_state.get('requires_quiz_pass', False)
+
+                # Add quiz information
+                quiz_stats = lock_state.get('quiz_stats', {})
+                lesson_dict['quiz_required'] = quiz_stats.get('quiz_required', False)
+                lesson_dict['quiz_completed'] = quiz_stats.get('quiz_completed', False)
+                lesson_dict['quiz_passed'] = quiz_stats.get('quiz_passed', False)
+                lesson_dict['quiz_best_score'] = quiz_stats.get('best_score')
+                lesson_dict['quiz_total_attempts'] = quiz_stats.get('total_attempts', 0)
+
+                enriched_lessons.append(lesson_dict)
+
+            # Calculate module-level progress
+            total_lessons = len(enriched_lessons)
+            completed_lessons = sum(1 for l in enriched_lessons if l.get('completed', False))
+            module_progress = (completed_lessons / total_lessons * 100) if total_lessons > 0 else 0.0
+
+            module_dict['lessons'] = enriched_lessons
+            module_dict['completed_lessons'] = completed_lessons
+            module_dict['total_lessons'] = total_lessons
+            module_dict['progress_percentage'] = module_progress
+
+            enriched_modules.append(module_dict)
+
+        # Calculate overall progress percentage
+        total_lessons_all = sum(m.get('total_lessons', 0) for m in enriched_modules)
+        completed_lessons_all = sum(m.get('completed_lessons', 0) for m in enriched_modules)
+        overall_progress = (completed_lessons_all / total_lessons_all * 100) if total_lessons_all > 0 else 0.0
+
+        # Phase 3: Convert career insights data to dict for JSON serialization
+        career_insights_data = None
+        if learning_path.career_insights:
+            # Convert MongoEngine EmbeddedDocument to dict
+            if hasattr(learning_path.career_insights, 'to_mongo'):
+                career_insights_data = learning_path.career_insights.to_mongo().to_dict()
+            else:
+                career_insights_data = dict(learning_path.career_insights)
+
+        skills_gained_data = []
+        if learning_path.skills_gained:
+            skills_gained_data = [
+                skill.to_mongo().to_dict() if hasattr(skill, 'to_mongo') else dict(skill)
+                for skill in learning_path.skills_gained
+            ]
+
+        project_milestones_data = []
+        if learning_path.project_milestones:
+            project_milestones_data = [
+                milestone.to_mongo().to_dict() if hasattr(milestone, 'to_mongo') else dict(milestone)
+                for milestone in learning_path.project_milestones
+            ]
+
+        # Return enriched path data
         return {
             'path_id': learning_path.path_id,
             'title': learning_path.title,
             'description': learning_path.description,
             'estimated_duration_hours': learning_path.estimated_duration_hours,
             'difficulty_level': learning_path.difficulty_level,
-            'modules': learning_path.modules,
+            'modules': enriched_modules,
             'prerequisites': learning_path.prerequisites,
             'created_at': learning_path.started_at or datetime.utcnow(),
             'created_by': learning_path.created_by,
             'started_at': learning_path.started_at,
             'completed_at': learning_path.completed_at,
-            'progress_percentage': learning_path.completion_rate * 100 if learning_path.completion_rate else 0.0,
+            'progress_percentage': overall_progress,
             'status': 'completed' if learning_path.completed_at else ('in_progress' if learning_path.started_at else 'not_started'),
+            'is_customized': learning_path.is_customized,
+            'customizations': learning_path.customizations,
+            # Phase 3: Career insights and enhanced learning outcomes
+            'career_insights': career_insights_data,
+            'skills_gained': skills_gained_data,
+            'project_milestones': project_milestones_data,
         }
 
 
@@ -1189,23 +1730,154 @@ class UpdateProgressView(APIView):
         validated_data = serializer.validated_data
 
         try:
-            # TODO: Implement full progress update logic
-            # 1. Update UserContentProfile.in_progress_content
-            # 2. Calculate completion percentages
-            # 3. Move to completed_courses if 100%
-            # 4. Update analytics
-            # 5. Log interaction event
+            # Step 1: Get or create UserContentProfile
+            try:
+                content_profile = UserContentProfile.objects.get(user_id=request.user.id)
+            except UserContentProfile.DoesNotExist:
+                content_profile = UserContentProfile(
+                    user_id=request.user.id,
+                    current_skills=[],
+                    learning_goals=[],
+                    in_progress_content=[],
+                    completed_courses=[]
+                )
+                content_profile.save()
+                logger.info(f"Created new UserContentProfile for user {request.user.id}")
+
+            # Step 2: Determine if lesson is completed
+            is_completed = validated_data.get('completed', False) or validated_data.get('progress_percentage', 0) >= 100
+
+            # Step 2.5: QUIZ VALIDATION - Check if quiz must be passed before completion
+            lesson_id = validated_data['lesson_id']
+            if is_completed:
+                # Get quiz stats for this lesson
+                quiz_stats = _get_quiz_stats(
+                    path_id=path_id,
+                    lesson_id=lesson_id,
+                    user=request.user
+                )
+
+                # If quiz exists and user hasn't passed it, prevent completion
+                if quiz_stats['quiz_exists'] and not quiz_stats['quiz_passed']:
+                    return APIError.create(
+                        message="You must pass the quiz for this lesson before marking it as completed",
+                        code="QUIZ_REQUIRED",
+                        details={
+                            'quiz_required': True,
+                            'quiz_passed': False,
+                            'quiz_completed': quiz_stats['quiz_completed'],
+                            'best_score': quiz_stats['best_score'],
+                            'passing_score_percentage': quiz_stats['passing_score_percentage'],
+                            'total_attempts': quiz_stats['total_attempts'],
+                            'lesson_id': lesson_id
+                        },
+                        status_code=StatusCodes.FORBIDDEN
+                    )
+
+            # Step 3: Update progress in UserContentProfile
+            progress_pct = validated_data.get('progress_percentage', 0)
+
+            # Check if content is already being tracked
+            content_exists = any(
+                p.get('content_id') == lesson_id
+                for p in content_profile.in_progress_content
+            ) or any(
+                c.get('course_id') == lesson_id
+                for c in content_profile.completed_courses
+            )
+
+            # If new content, start tracking it first
+            if not content_exists and not is_completed:
+                content_profile.start_content({
+                    'content_id': lesson_id,
+                    'platform': validated_data.get('platform', 'unknown'),
+                    'title': validated_data.get('lesson_title', 'Lesson'),
+                    'progress_percentage': progress_pct
+                })
+                logger.info(f"🆕 Started tracking lesson {lesson_id}")
+
+            if is_completed:
+                # Mark as completed - use dictionary format
+                content_profile.add_completed_course({
+                    'course_id': lesson_id,
+                    'platform': validated_data.get('platform', 'unknown'),
+                    'title': validated_data.get('lesson_title', 'Lesson'),
+                    'completion_rate': 1.0,
+                    'rating': None,
+                    'duration_hours': validated_data.get('time_spent_minutes', 0) / 60.0 if validated_data.get('time_spent_minutes') else None
+                })
+                # Remove from in_progress if it exists there
+                content_profile.in_progress_content = [
+                    p for p in content_profile.in_progress_content
+                    if p.get('content_id') != lesson_id
+                ]
+                logger.info(f"✅ Marked lesson {lesson_id} as completed")
+            else:
+                # Update in-progress (only takes content_id and progress_percentage)
+                content_profile.update_content_progress(lesson_id, progress_pct)
+                logger.info(f"📊 Updated progress: {progress_pct}%")
+
+            content_profile.save()
+
+            # Step 4: Update LearningPath in CourseRecommendation
+            try:
+                course_recommendation = CourseRecommendation.objects.get(user_id=request.user.id)
+
+                # Find the learning path
+                target_path = None
+                for learning_path in course_recommendation.learning_paths:
+                    if learning_path.path_id == path_id:
+                        target_path = learning_path
+                        break
+
+                if target_path:
+                    # Update last accessed
+                    target_path.last_accessed = datetime.utcnow()
+
+                    # Update lesson progress (modules and lessons are dicts, not objects)
+                    for module in target_path.modules:
+                        if module.get('module_id') == validated_data['module_id']:
+                            lessons = module.get('lessons', [])
+                            for lesson in lessons:
+                                if lesson.get('lesson_id') == validated_data['lesson_id']:
+                                    lesson['completed'] = is_completed
+                                    lesson['progress_percentage'] = validated_data.get('progress_percentage', 0)
+                                    break
+
+                    # Recalculate overall progress
+                    target_path.calculate_progress(content_profile)
+
+                    # Mark as started if first interaction
+                    if not target_path.started_at:
+                        target_path.started_at = datetime.utcnow()
+
+                    course_recommendation.save()
+                    logger.info(f"💾 Updated learning path {path_id} in MongoDB")
+
+            except CourseRecommendation.DoesNotExist:
+                logger.warning(f"No course recommendations for user {request.user.id}")
+
+            # Step 5: Return actual updated data
+            response_data = {
+                'lesson_id': validated_data['lesson_id'],
+                'module_id': validated_data['module_id'],
+                'progress_percentage': validated_data.get('progress_percentage', 0),
+                'completed': is_completed,
+                'time_spent_minutes': validated_data.get('time_spent_minutes', 0),
+                'updated_at': datetime.utcnow().isoformat()
+            }
 
             return APISuccess.create(
-                data=validated_data,
-                message="Progress updated successfully",
+                data=response_data,
+                message="Progress updated and saved successfully",
                 status_code=StatusCodes.OK
             )
 
         except Exception as e:
+            logger.error(f"❌ Error updating progress: {str(e)}", exc_info=True)
             return APIError.create(
                 message=f"Failed to update progress: {str(e)}",
-                code="UPDATE_FAILED",
+                code="PROGRESS_UPDATE_FAILED",
                 status_code=StatusCodes.INTERNAL_SERVER_ERROR
             )
 
@@ -1321,19 +1993,52 @@ class MyLearningPathsView(APIView):
         Returns: Active paths, next lessons, streak, stats
         """
         try:
-            # TODO: Implement dashboard summary
-            # 1. Get active paths (in_progress)
-            # 2. Calculate next recommended lesson for each
-            # 3. Get streak data
-            # 4. Calculate stats
+            # Query MongoDB for user's course recommendations
+            try:
+                course_recommendation = CourseRecommendation.objects.get(user_id=str(request.user.id))
+            except CourseRecommendation.DoesNotExist:
+                # User has no learning paths yet - return empty dashboard
+                logger.info(f"No course recommendations found for user {request.user.id}")
+                dashboard_data = {
+                    'active_paths': [],
+                    'next_lessons': [],
+                    'learning_streak_days': 0,
+                    'total_hours_learned': 0.0,
+                    'modules_completed_this_week': 0,
+                    'current_learning_velocity': 0.0
+                }
+                serialized = DashboardSummarySerializer(dashboard_data)
+                return APISuccess.create(
+                    data=serialized.data,
+                    message="No learning paths found. Create your first path!",
+                    status_code=StatusCodes.OK
+                )
 
+            # Get user content profile for progress tracking
+            try:
+                content_profile = UserContentProfile.objects.get(user_id=str(request.user.id))
+            except UserContentProfile.DoesNotExist:
+                content_profile = None
+                logger.info(f"No content profile found for user {request.user.id}")
+
+            # Build active_paths from real MongoDB data
+            active_paths = []
+            for learning_path in course_recommendation.learning_paths:
+                # Enrich with progress data from content profile
+                path_dict = self._enrich_with_progress(learning_path, content_profile)
+                active_paths.append(path_dict)
+
+            logger.info(f"✅ Fetched {len(active_paths)} learning paths for user {request.user.id}")
+
+            # Build dashboard data with real learning paths
+            # TODO: Implement next_lessons, streak, and stats calculations
             dashboard_data = {
-                'active_paths': [],
-                'next_lessons': [],
-                'learning_streak_days': 0,
-                'total_hours_learned': 0.0,
-                'modules_completed_this_week': 0,
-                'current_learning_velocity': 0.0
+                'active_paths': active_paths,
+                'next_lessons': [],  # TODO: Implement next lesson recommendations
+                'learning_streak_days': 0,  # TODO: Calculate from activity logs
+                'total_hours_learned': 0.0,  # TODO: Sum from progress data
+                'modules_completed_this_week': 0,  # TODO: Count weekly completions
+                'current_learning_velocity': 0.0  # TODO: Calculate learning rate
             }
 
             serialized = DashboardSummarySerializer(dashboard_data)
@@ -1344,8 +2049,197 @@ class MyLearningPathsView(APIView):
             )
 
         except Exception as e:
+            logger.error(f"❌ Error fetching dashboard: {str(e)}", exc_info=True)
             return APIError.create(
                 message=f"Failed to retrieve dashboard data: {str(e)}",
                 code="DASHBOARD_FAILED",
+                status_code=StatusCodes.INTERNAL_SERVER_ERROR
+            )
+
+    def _enrich_with_progress(self, learning_path: LearningPath, content_profile: UserContentProfile) -> Dict[str, Any]:
+        """
+        Enrich learning path with user progress data.
+
+        Args:
+            learning_path: LearningPath document from MongoDB
+            content_profile: UserContentProfile with progress data (or None)
+
+        Returns:
+            dict: Learning path with progress information
+        """
+        path_dict = {
+            'path_id': learning_path.path_id,
+            'title': learning_path.title,
+            'description': learning_path.description,
+            'estimated_duration_hours': learning_path.estimated_duration_hours,
+            'difficulty_level': learning_path.difficulty_level,
+            'modules': learning_path.modules,
+            'prerequisites': learning_path.prerequisites,
+            'created_at': learning_path.started_at or datetime.utcnow(),
+            'created_by': learning_path.created_by,
+            'started_at': learning_path.started_at,
+            'completed_at': learning_path.completed_at,
+            'progress_percentage': learning_path.completion_rate * 100 if learning_path.completion_rate else 0.0,
+        }
+
+        # Determine status based on timestamps
+        if learning_path.completed_at:
+            path_dict['status'] = 'completed'
+        elif learning_path.started_at:
+            path_dict['status'] = 'in_progress'
+        else:
+            path_dict['status'] = 'not_started'
+
+        return path_dict
+
+
+class UpdatePathStatusView(APIView):
+    """
+    Phase 2: Update the status of a specific learning path.
+    Supports status transitions: active → in_progress → completed/archived
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, path_id):
+        """
+        Update learning path status.
+
+        Request body:
+        {
+            "status": "in_progress" | "completed" | "archived"
+        }
+        """
+        try:
+            # Get course recommendation for user
+            try:
+                course_recommendation = CourseRecommendation.objects.get(user_id=request.user.id)
+            except CourseRecommendation.DoesNotExist:
+                return APIError.create(
+                    message="No learning paths found for this user",
+                    code="NOT_FOUND",
+                    status_code=StatusCodes.NOT_FOUND
+                )
+
+            # Find the specific learning path
+            learning_path = None
+            path_index = None
+            for idx, path in enumerate(course_recommendation.learning_paths):
+                if path.path_id == path_id:
+                    learning_path = path
+                    path_index = idx
+                    break
+
+            if not learning_path:
+                return APIError.create(
+                    message=f"Learning path '{path_id}' not found",
+                    code="NOT_FOUND",
+                    status_code=StatusCodes.NOT_FOUND
+                )
+
+            # Validate and update status
+            new_status = request.data.get('status')
+            if new_status not in ['active', 'in_progress', 'completed', 'archived']:
+                return APIError.create(
+                    message=f"Invalid status: {new_status}. Must be one of: active, in_progress, completed, archived",
+                    code="INVALID_STATUS",
+                    status_code=StatusCodes.BAD_REQUEST
+                )
+
+            # Update status and related timestamps
+            old_status = learning_path.status
+            learning_path.status = new_status
+
+            # Update timestamps based on status transitions
+            if new_status == 'in_progress' and not learning_path.started_at:
+                learning_path.started_at = datetime.utcnow()
+            elif new_status == 'completed':
+                learning_path.completed_at = datetime.utcnow()
+                if not learning_path.started_at:
+                    learning_path.started_at = datetime.utcnow()
+            elif new_status == 'archived':
+                learning_path.archived_at = datetime.utcnow()
+
+            # Save back to database
+            course_recommendation.learning_paths[path_index] = learning_path
+            course_recommendation.save()
+
+            logger.info(f"✅ Updated learning path {path_id} status: {old_status} → {new_status}")
+
+            return APISuccess.create(
+                message=f"Learning path status updated from {old_status} to {new_status}",
+                data={
+                    'path_id': path_id,
+                    'status': new_status,
+                    'started_at': learning_path.started_at,
+                    'completed_at': learning_path.completed_at,
+                    'archived_at': learning_path.archived_at
+                },
+                status_code=StatusCodes.OK
+            )
+
+        except Exception as e:
+            logger.error(f"❌ Error updating path status: {str(e)}")
+            return APIError.create(
+                message=f"Failed to update path status: {str(e)}",
+                code="INTERNAL_ERROR",
+                status_code=StatusCodes.INTERNAL_SERVER_ERROR
+            )
+
+
+class DeletePathView(APIView):
+    """
+    Phase 2: Delete a specific learning path by path_id.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, path_id):
+        """
+        Delete a learning path by path_id.
+        """
+        try:
+            # Get course recommendation for user
+            try:
+                course_recommendation = CourseRecommendation.objects.get(user_id=request.user.id)
+            except CourseRecommendation.DoesNotExist:
+                return APIError.create(
+                    message="No learning paths found for this user",
+                    code="NOT_FOUND",
+                    status_code=StatusCodes.NOT_FOUND
+                )
+
+            # Find and remove the specific learning path
+            initial_count = len(course_recommendation.learning_paths)
+            course_recommendation.learning_paths = [
+                path for path in course_recommendation.learning_paths
+                if path.path_id != path_id
+            ]
+            final_count = len(course_recommendation.learning_paths)
+
+            if initial_count == final_count:
+                return APIError.create(
+                    message=f"Learning path '{path_id}' not found",
+                    code="NOT_FOUND",
+                    status_code=StatusCodes.NOT_FOUND
+                )
+
+            # Save changes
+            course_recommendation.save()
+
+            logger.info(f"✅ Deleted learning path {path_id} for user {request.user.id}")
+
+            return APISuccess.create(
+                message=f"Learning path deleted successfully",
+                data={
+                    'path_id': path_id,
+                    'remaining_paths': final_count
+                },
+                status_code=StatusCodes.OK
+            )
+
+        except Exception as e:
+            logger.error(f"❌ Error deleting learning path: {str(e)}")
+            return APIError.create(
+                message=f"Failed to delete learning path: {str(e)}",
+                code="INTERNAL_ERROR",
                 status_code=StatusCodes.INTERNAL_SERVER_ERROR
             )

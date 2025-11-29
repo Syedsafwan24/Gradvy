@@ -305,7 +305,7 @@ class CourseSearchService:
                 search_flags['search_udemy'] = True
                 logger.info(f"✅ '{style}' learning style → Enabling Udemy search")
 
-            elif style == 'reading':
+            elif style in ['reading', 'articles']:  # Support both 'reading' and 'articles' for backward compatibility
                 # User wants text-based content → search article platforms
                 search_flags['search_articles'] = True
                 logger.info(f"✅ '{style}' learning style → Enabling article search")
@@ -424,10 +424,72 @@ class CourseSearchService:
             all_courses.extend(github_repos)
             logger.info(f"✅ GitHub search completed: {len(github_repos)} tutorial repos found")
 
+        # INTELLIGENT FALLBACK LOGIC (NEW!)
+        # If we found very few results, try fallback based on topic domain
+        if len(all_courses) < 3:
+            logger.warning(f"⚠️ Only {len(all_courses)} courses found. Applying intelligent fallback...")
+
+            # Determine topic domain to guide fallback strategy
+            topic_domain = self._determine_topic_domain(topic)
+            logger.info(f"🔍 Topic domain detected: {topic_domain}")
+
+            if topic_domain == 'programming':
+                # Programming topics → try GitHub repos + articles if not already searched
+                logger.info("🔄 Fallback strategy: Programming topic → GitHub + Articles")
+
+                if 'interactive' in learning_styles and not platform_flags.get('search_github'):
+                    logger.info("  → Adding GitHub tutorial repos")
+                    github_repos = self._search_github_tutorials(topic, max_results=5)
+                    all_courses.extend(github_repos)
+
+                if not platform_flags['search_articles']:
+                    logger.info("  → Adding Dev.to articles")
+                    devto_articles = self._search_devto(topic, max_results=3)
+                    all_courses.extend(devto_articles)
+
+            elif topic_domain in ['mathematics', 'data_science', 'machine_learning']:
+                # Math/ML topics → articles + GitHub repos (Exercism won't work for these)
+                logger.info(f"🔄 Fallback strategy: {topic_domain} topic → Articles + GitHub")
+
+                if 'interactive' in learning_styles:
+                    logger.info("  → User wants interactive but Exercism doesn't support this topic")
+                    logger.info("  → Searching articles and GitHub repos instead")
+
+                    # Search article platforms
+                    if not platform_flags['search_articles']:
+                        devto_articles = self._search_devto(topic, max_results=5)
+                        all_courses.extend(devto_articles)
+                        hashnode_articles = self._search_hashnode(topic, max_results=5)
+                        all_courses.extend(hashnode_articles)
+                        fcc_articles = self._search_freecodecamp_rss(topic, max_results=3)
+                        all_courses.extend(fcc_articles)
+
+                    # Search GitHub for tutorial repos
+                    if not platform_flags.get('search_github'):
+                        github_repos = self._search_github_tutorials(topic, max_results=5)
+                        all_courses.extend(github_repos)
+
+            elif topic_domain == 'general':
+                # General topics → try all content types
+                logger.info("🔄 Fallback strategy: General topic → Broadening to all content types")
+
+                if not platform_flags['search_articles']:
+                    logger.info("  → Adding articles")
+                    devto_articles = self._search_devto(topic, max_results=3)
+                    all_courses.extend(devto_articles)
+
+                if not platform_flags.get('search_github'):
+                    logger.info("  → Adding GitHub repos")
+                    github_repos = self._search_github_tutorials(topic, max_results=3)
+                    all_courses.extend(github_repos)
+
+            logger.info(f"✅ After fallback: {len(all_courses)} total courses found")
+
         # NO MOCK DATA - Return empty list if no real courses found
         # User explicitly requested: "it should not mock those things!"
         if not all_courses:
-            logger.warning(f"⚠️ No real courses found for '{topic}' - returning empty list (NO MOCK DATA)")
+            logger.error(f"❌ NO CONTENT FOUND even after fallback for '{topic}' with styles: {learning_styles}")
+            logger.error(f"   Tried primary sources + intelligent fallback, but no results.")
             # Return empty list instead of mock data - caller should handle gracefully
             return []
 
@@ -437,6 +499,150 @@ class CourseSearchService:
         # Rank and return top courses
         ranked_courses = self._rank_courses(all_courses, user_preferences)
         return ranked_courses[:max_results]
+
+    def search_courses_with_fallback(
+        self,
+        topic: str,
+        user_preferences: Dict,
+        max_results: int = 10
+    ) -> List[ScoredCourse]:
+        """
+        Progressive fallback search - relaxes filters if no content found.
+
+        BUG FIX: Prevents empty modules by trying 4 levels of filter relaxation:
+        1. Exact user preferences (platform + learning style filters)
+        2. Relax platform filters (allow all platforms, keep learning style)
+        3. Relax learning style filters (allow all content types, keep platforms)
+        4. Generic search (no filters - broad fallback)
+
+        Returns at least 1 result or empty list if absolutely nothing found.
+
+        Args:
+            topic: Topic/skill to search for
+            user_preferences: User's learning preferences
+            max_results: Maximum number of courses to return
+
+        Returns:
+            List of ScoredCourse objects (potentially from relaxed filters)
+        """
+        logger.info(f"🔍 Progressive search for '{topic}' (max {max_results} results)")
+
+        # Level 1: Exact user preferences (current behavior)
+        logger.info(f"   Level 1: Trying exact user preferences...")
+        courses = self.search_courses(topic, user_preferences, max_results)
+        if courses:
+            logger.info(f"   ✅ Found {len(courses)} courses with exact preferences")
+            return courses
+
+        # Level 2: Relax platform filters (keep learning style)
+        logger.warning(f"   ⚠️ Level 1 failed (0 results), trying Level 2: Relaxing platform filters...")
+        relaxed_prefs = {
+            'basic_info': {
+                **user_preferences.get('basic_info', {}),
+                'preferred_platforms': []  # Allow all platforms
+            },
+            'learning_preferences': user_preferences.get('learning_preferences', {})
+        }
+
+        courses = self.search_courses(topic, relaxed_prefs, max_results)
+        if courses:
+            logger.info(f"   ✅ Found {len(courses)} courses with relaxed platforms (Level 2)")
+            return courses
+
+        # Level 3: Relax learning style filters (keep other prefs)
+        logger.warning(f"   ⚠️ Level 2 failed, trying Level 3: Relaxing learning style filters...")
+        relaxed_prefs = {
+            'basic_info': {
+                **user_preferences.get('basic_info', {}),
+                'learning_style': []  # Allow all content types
+            },
+            'learning_preferences': {
+                **user_preferences.get('learning_preferences', {}),
+                'learning_styles': []  # Allow all content types
+            }
+        }
+
+        courses = self.search_courses(topic, relaxed_prefs, max_results)
+        if courses:
+            logger.info(f"   ✅ Found {len(courses)} courses with relaxed learning styles (Level 3)")
+            return courses
+
+        # Level 4: Generic fallback (no filters at all)
+        logger.warning(f"   ⚠️ Level 3 failed, trying Level 4: Generic fallback (no filters)...")
+        generic_prefs = {
+            'basic_info': {'preferred_platforms': [], 'learning_style': []},
+            'learning_preferences': {'learning_styles': []}
+        }
+
+        courses = self.search_courses(topic, generic_prefs, max_results)
+        if courses:
+            logger.info(f"   ✅ Found {len(courses)} courses with generic search (Level 4)")
+            return courses
+
+        # All levels failed - return empty (will be caught by validation in views.py)
+        logger.error(f"   ❌ CRITICAL: All 4 fallback levels failed for '{topic}' - no content available!")
+        logger.error(f"   User will see this module skipped or may need to check platform API keys.")
+        return []
+
+    def _determine_topic_domain(self, topic: str) -> str:
+        """
+        Classify topic into domain for intelligent fallback.
+
+        This method analyzes the topic string to determine its domain,
+        which helps guide fallback content search when primary sources
+        return insufficient results.
+
+        Args:
+            topic: Topic string to classify (e.g., "Python programming", "Linear Algebra")
+
+        Returns:
+            str: One of 'programming', 'mathematics', 'data_science', 'machine_learning', 'general'
+        """
+        topic_lower = topic.lower()
+
+        # Programming keywords - web dev, mobile, languages, frameworks
+        programming_keywords = [
+            'python', 'javascript', 'java', 'c++', 'rust', 'go', 'typescript',
+            'react', 'vue', 'angular', 'node', 'django', 'flask', 'spring',
+            'api', 'backend', 'frontend', 'web development', 'mobile', 'android', 'ios',
+            'ruby', 'php', 'kotlin', 'swift', 'html', 'css', 'sql', 'programming',
+            'coding', 'software', 'developer', 'devops', 'docker', 'kubernetes'
+        ]
+
+        # Math/ML/Data Science keywords
+        math_ml_keywords = [
+            'mathematics', 'math', 'calculus', 'algebra', 'statistics', 'linear algebra',
+            'machine learning', 'deep learning', 'ai', 'neural network', 'ml', 'artificial intelligence',
+            'data science', 'data analysis', 'hypothesis testing', 'probability',
+            'regression', 'classification', 'clustering', 'supervised', 'unsupervised',
+            'tensorflow', 'pytorch', 'scikit', 'pandas', 'numpy', 'matplotlib'
+        ]
+
+        # Check for programming domain
+        if any(kw in topic_lower for kw in programming_keywords):
+            logger.debug(f"🔍 Topic '{topic}' classified as: programming")
+            return 'programming'
+
+        # Check for math/ML/data science domains
+        elif any(kw in topic_lower for kw in math_ml_keywords):
+            # Further classify into subdomains
+            if 'machine learning' in topic_lower or 'deep learning' in topic_lower or \
+               'neural' in topic_lower or 'ai' in topic_lower or 'artificial intelligence' in topic_lower:
+                logger.debug(f"🔍 Topic '{topic}' classified as: machine_learning")
+                return 'machine_learning'
+            elif 'data science' in topic_lower or 'data analysis' in topic_lower or \
+                 'pandas' in topic_lower or 'numpy' in topic_lower:
+                logger.debug(f"🔍 Topic '{topic}' classified as: data_science")
+                return 'data_science'
+            else:
+                # Pure math topics (calculus, algebra, statistics, etc.)
+                logger.debug(f"🔍 Topic '{topic}' classified as: mathematics")
+                return 'mathematics'
+
+        # Default to general for topics that don't match above
+        else:
+            logger.debug(f"🔍 Topic '{topic}' classified as: general")
+            return 'general'
 
     def _search_youtube(self, topic: str, user_preferences: Dict, max_results: int = 5) -> List[Course]:
         """
@@ -2186,15 +2392,18 @@ class CourseSearchService:
 
         FULLY PERSONALIZED - Uses ALL user preferences, no hardcoded patterns.
 
-        Enhanced Scoring breakdown:
-        - Platform preference match (25 points)
+        Enhanced Scoring breakdown (PHASE 3):
+        - Platform preference match (15 points)
         - Rating quality (20 points)
         - Difficulty match (20 points)
         - Duration preference (15 points)
-        - Content type/learning style match (10 points)
+        - Content type/career match (10 points)
         - Language preference match (5 points)
         - Instructor rating threshold (5 points)
-        Total: 100 points
+        - Content freshness (5 points)
+        - Learning style content match (10 points) - NEW!
+        - Playlist/structure bonus (5 points)
+        Total: 110 points
 
         Args:
             courses: List of courses to rank
@@ -2235,13 +2444,13 @@ class CourseSearchService:
             score = 0.0
             breakdown = {}
 
-            # 1. Platform preference (20 points) - REDUCED for freshness factor
+            # 1. Platform preference (15 points) - REDUCED for learning style content matching
             if course.platform in preferred_platforms:
-                platform_score = 20.0
+                platform_score = 15.0
             elif not preferred_platforms:  # No preference
-                platform_score = 10.0
+                platform_score = 7.5
             else:
-                platform_score = 4.0
+                platform_score = 3.0
             score += platform_score
             breakdown['platform'] = platform_score
 
@@ -2295,9 +2504,11 @@ class CourseSearchService:
 
             # 6. Language preference match (5 points) - NEW!
             language_score = 0.0
-            if course.language.lower() in [lang.lower() for lang in language_preference]:
+            # Handle None language gracefully (some sources like GitHub don't provide language field)
+            course_language = course.language.lower() if course.language else 'english'
+            if course_language in [lang.lower() for lang in language_preference]:
                 language_score = 5.0
-            elif not language_preference or course.language.lower() == 'english':
+            elif not language_preference or course_language == 'english':
                 language_score = 2.5  # Default partial score for English
             score += language_score
             breakdown['language'] = language_score
@@ -2337,7 +2548,56 @@ class CourseSearchService:
             score += freshness_score
             breakdown['freshness'] = freshness_score
 
-            # 9. Playlist/structure bonus (5 points) - KEPT for structured learning
+            # 9. Learning Style Content Match (10 points) - NEW PHASE 3!
+            # Analyze course title/description for content type indicators
+            # This goes deeper than platform matching - looks at actual course content
+            content_match_score = 0.0
+            title_lower = (course.title or "").lower()  # Handle None title gracefully
+            desc_lower = (course.description or "").lower()
+
+            # Content type keyword indicators
+            project_keywords = ['project', 'build', 'hands-on', 'tutorial', 'create', 'develop', 'make']
+            theory_keywords = ['introduction', 'fundamentals', 'overview', 'concepts', 'theory', 'basics']
+            interactive_keywords = ['practice', 'exercises', 'challenges', 'coding', 'workshop', 'bootcamp']
+
+            # Match to user's learning style preferences
+            if 'hands_on' in learning_styles or 'projects' in learning_styles:
+                # User wants hands-on/project-based learning
+                if any(kw in title_lower or kw in desc_lower for kw in project_keywords):
+                    content_match_score = 10.0  # Perfect match - project-based course
+                elif any(kw in title_lower or kw in desc_lower for kw in interactive_keywords):
+                    content_match_score = 7.0  # Good match - interactive/practice
+                else:
+                    content_match_score = 3.0  # Weak match - likely theory
+
+            elif 'videos' in learning_styles or 'visual' in learning_styles:
+                # User wants video-based learning
+                if course.platform == 'youtube' and course.duration_minutes:
+                    content_match_score = 10.0  # Perfect - YouTube video
+                else:
+                    content_match_score = 6.0  # Partial - other platforms
+
+            elif 'reading' in learning_styles:
+                # User wants reading/theory-based learning
+                if any(kw in title_lower for kw in theory_keywords):
+                    content_match_score = 10.0  # Perfect - theory course
+                else:
+                    content_match_score = 5.0  # Partial match
+
+            elif 'interactive' in learning_styles:
+                # User wants interactive/practice-based learning
+                if any(kw in title_lower or kw in desc_lower for kw in interactive_keywords):
+                    content_match_score = 10.0  # Perfect - interactive course
+                else:
+                    content_match_score = 5.0  # Partial match
+            else:
+                # No specific learning style preference - neutral score
+                content_match_score = 5.0
+
+            score += content_match_score
+            breakdown['learning_style_match'] = content_match_score
+
+            # 10. Playlist/structure bonus (5 points) - KEPT for structured learning
             # Playlists provide structured, sequential learning paths
             playlist_bonus = 0
             if '📚' in course.title or 'playlist' in course.tags:

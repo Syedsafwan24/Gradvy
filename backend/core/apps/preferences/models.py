@@ -147,7 +147,7 @@ class BasicInfo(EmbeddedDocument):
     time_availability = StringField(choices=TIME_CHOICES)
 
     # Learning style preferences
-    STYLE_CHOICES = ['visual', 'hands_on', 'reading', 'videos', 'interactive']
+    STYLE_CHOICES = ['visual', 'hands_on', 'reading', 'articles', 'videos', 'interactive']  # Support 'articles' for backward compatibility
     learning_style = ListField(StringField(choices=STYLE_CHOICES), default=list)
 
     # Career stage

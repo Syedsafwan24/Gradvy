@@ -6,7 +6,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Lock, CheckCircle, BookOpen } from 'lucide-react';
+import { ChevronDown, ChevronRight, Lock, CheckCircle, BookOpen, Target, Award } from 'lucide-react';
 import LessonCard from './LessonCard';
 import ProgressBar from './ProgressBar';
 
@@ -25,11 +25,47 @@ export default function ModulesList({ modules = [], pathId, status }) {
     });
   };
 
+  // Enhanced empty state with helpful messaging
   if (!modules || modules.length === 0) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 text-center">
-        <BookOpen className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-        <p className="text-gray-600 dark:text-gray-400">No modules available</p>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-12 text-center">
+        <div className="max-w-md mx-auto">
+          <BookOpen className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+            No Learning Content Found
+          </h3>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            We couldn't find relevant content for this learning path. This may happen when:
+          </p>
+          <ul className="text-left text-sm text-gray-600 dark:text-gray-400 space-y-2 mb-6">
+            <li className="flex items-start gap-2">
+              <span className="text-blue-500 font-bold">•</span>
+              <span>The topic is very specialized and not available in free resources</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-blue-500 font-bold">•</span>
+              <span>Your learning style preferences are too restrictive for this topic</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-blue-500 font-bold">•</span>
+              <span>Content APIs returned no results</span>
+            </li>
+          </ul>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={() => window.location.href = '/app/learning-paths'}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+            >
+              Try Another Path
+            </button>
+            <button
+              onClick={() => window.location.href = '/app/settings'}
+              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm font-medium"
+            >
+              Adjust Preferences
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -131,6 +167,36 @@ export default function ModulesList({ modules = [], pathId, status }) {
             {/* Module Lessons */}
             {isExpanded && !isLocked && (
               <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-750">
+                {/* Phase 3: Learning Outcomes Section */}
+                {module.learning_outcomes && module.learning_outcomes.length > 0 && (
+                  <div className="p-6 border-b border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/10">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0">
+                        <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg">
+                          <Target className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                        </div>
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-300 mb-3">
+                          What You'll Learn
+                        </h4>
+                        <ul className="space-y-2">
+                          {module.learning_outcomes.map((outcome, idx) => (
+                            <li
+                              key={idx}
+                              className="flex items-start gap-2 text-sm text-blue-800 dark:text-blue-200"
+                            >
+                              <Award className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
+                              <span>{outcome}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Lessons Section */}
                 <div className="p-6 space-y-3">
                   {module.lessons && module.lessons.length > 0 ? (
                     module.lessons.map((lesson, lessonIndex) => (

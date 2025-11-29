@@ -15,6 +15,7 @@ import {
 import PathDetailHeader from '@/components/learning-paths/PathDetailHeader';
 import ModulesList from '@/components/learning-paths/ModulesList';
 import ProgressSidebar from '@/components/learning-paths/ProgressSidebar';
+import CareerInsightsPanel from '@/components/learning-paths/CareerInsightsPanel';
 import { ArrowLeft, PlayCircle, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 
@@ -289,6 +290,11 @@ export default function LearningPathDetailPage({ params }) {
               status={pathData?.status}
               isCompleted={isCompleted}
             />
+
+            {/* Career Insights Section - Phase 3 */}
+            {pathData?.career_insights && (
+              <CareerInsightsPanel careerInsights={pathData.career_insights} />
+            )}
 
             <ModulesList
               modules={pathData?.modules || []}
