@@ -35,6 +35,24 @@ UDEMY_AFFILIATE_ID = config('UDEMY_AFFILIATE_ID', default='')
 USE_MOCK_COURSES = config('USE_MOCK_COURSES', default=True, cast=bool)  # Enable mock for development
 REQUIRE_REAL_COURSES = config('REQUIRE_REAL_COURSES', default=False, cast=bool)  # Fail if no APIs in production
 
+# YouTube Quality Filters Configuration
+YOUTUBE_QUALITY_FILTERS = {
+    'freshness_days': config('YOUTUBE_FRESHNESS_DAYS', default=730, cast=int),
+    'min_length_minutes': config('YOUTUBE_MIN_LENGTH_MINUTES', default=5, cast=int),
+    'max_length_minutes': config('YOUTUBE_MAX_LENGTH_MINUTES', default=20, cast=int),
+    'min_subscribers': config('YOUTUBE_MIN_SUBSCRIBERS', default=10000, cast=int),
+    'enable_channel_check': config('YOUTUBE_ENABLE_CHANNEL_CHECK', default=True, cast=bool),
+    'min_engagement_score': config('YOUTUBE_MIN_ENGAGEMENT_SCORE', default=3.0, cast=float),
+    'min_views': config('YOUTUBE_MIN_VIEWS', default=1000, cast=int),
+}
+
+# YouTube Playlist Expansion Configuration
+YOUTUBE_PLAYLIST_CONFIG = {
+    'expand_playlists': config('YOUTUBE_EXPAND_PLAYLISTS', default=True, cast=bool),
+    'max_videos_per_playlist': config('YOUTUBE_MAX_VIDEOS_PER_PLAYLIST', default=10, cast=int),
+    'min_playlist_size': config('YOUTUBE_MIN_PLAYLIST_SIZE', default=3, cast=int),
+}
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',

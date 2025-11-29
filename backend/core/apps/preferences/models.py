@@ -597,7 +597,7 @@ class UserPreference(Document):
 
     @property
     def content_preferences(self):
-        """Access content preferences - delegates to UserContentProfile model or legacy data"""
+        """Access content preferences - delegates to UserContentProfile model or creates defaults"""
         try:
             from apps.learning_content.models import UserContentProfile
             content = UserContentProfile.get_by_user_id(self.user_id)
@@ -605,8 +605,8 @@ class UserPreference(Document):
                 return content.content_preferences
         except ImportError:
             pass
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to load UserContentProfile for user {self.user_id}: {e}")
 
         # Fallback to legacy data
         if hasattr(self, '_legacy_content_preferences') and self._legacy_content_preferences:
@@ -615,9 +615,36 @@ class UserPreference(Document):
                 def __init__(self, data):
                     for key, value in data.items():
                         setattr(self, key, value)
+
+                def to_mongo(self):
+                    """Convert to MongoDB dict format"""
+                    return self.__dict__
+
             return LegacyContentPrefs(self._legacy_content_preferences)
 
-        return None
+        # NEW: Return default content preferences instead of None
+        class DefaultContentPrefs:
+            """Default content preferences when none exist"""
+            def __init__(self):
+                self.preferred_platforms = ['youtube', 'udemy']
+                self.content_types = ['video', 'interactive']
+                self.difficulty_preference = 'mixed'
+                self.duration_preference = 'mixed'
+                self.language_preference = ['english']
+                self.instructor_ratings_min = 3.0
+
+            def to_mongo(self):
+                """Convert to MongoDB dict format"""
+                return {
+                    'preferred_platforms': self.preferred_platforms,
+                    'content_types': self.content_types,
+                    'difficulty_preference': self.difficulty_preference,
+                    'duration_preference': self.duration_preference,
+                    'language_preference': self.language_preference,
+                    'instructor_ratings_min': self.instructor_ratings_min
+                }
+
+        return DefaultContentPrefs()
 
     # Legacy properties for backward compatibility
     @property

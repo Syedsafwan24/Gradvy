@@ -5,15 +5,18 @@
 
 'use client';
 
-import { BookOpen, Clock, TrendingUp, CheckCircle, PlayCircle, Loader2 } from 'lucide-react';
+import { BookOpen, Clock, Loader2, ArrowRight } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export default function LearningPathsList({ data, isLoading, error, view, onViewPath }) {
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
+      <div className="flex items-center justify-center py-16">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
-          <p className="text-gray-600 dark:text-gray-400">Loading learning paths...</p>
+          <Loader2 className="w-8 h-8 animate-spin text-primary-600 mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">Loading learning paths...</p>
         </div>
       </div>
     );
@@ -21,14 +24,11 @@ export default function LearningPathsList({ data, isLoading, error, view, onView
 
   if (error) {
     return (
-      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6">
-        <h3 className="text-red-900 dark:text-red-200 font-semibold mb-2">
-          Failed to load learning paths
-        </h3>
-        <p className="text-red-700 dark:text-red-300 text-sm">
-          {error?.data?.error?.message || 'Please try again later'}
-        </p>
-      </div>
+      <Alert variant="destructive">
+        <AlertDescription>
+          {error?.data?.error?.message || 'Failed to load learning paths. Please try again later.'}
+        </AlertDescription>
+      </Alert>
     );
   }
 
@@ -41,20 +41,22 @@ export default function LearningPathsList({ data, isLoading, error, view, onView
 
   if (filteredPaths.length === 0) {
     return (
-      <div className="text-center py-12">
-        <BookOpen className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-          No {view !== 'all' ? view : ''} learning paths yet
-        </h3>
-        <p className="text-gray-600 dark:text-gray-400 mb-6">
-          Generate your first AI-powered learning path to get started
-        </p>
-      </div>
+      <Card className="p-12">
+        <div className="text-center">
+          <BookOpen className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">
+            No {view !== 'all' ? view : ''} learning paths yet
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Generate your first AI-powered learning path to get started
+          </p>
+        </div>
+      </Card>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
       {filteredPaths.map((path) => (
         <LearningPathCard
           key={path.path_id}
@@ -67,111 +69,111 @@ export default function LearningPathsList({ data, isLoading, error, view, onView
 }
 
 function LearningPathCard({ path, onClick }) {
-  const getStatusBadge = (status) => {
+  const getStatusVariant = (status) => {
     switch (status) {
       case 'not_started':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-medium rounded-full">
-            <PlayCircle className="w-3 h-3" />
-            Not Started
-          </span>
-        );
+        return 'secondary';
       case 'in_progress':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium rounded-full">
-            <TrendingUp className="w-3 h-3" />
-            In Progress
-          </span>
-        );
+        return 'indigo';
       case 'completed':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-xs font-medium rounded-full">
-            <CheckCircle className="w-3 h-3" />
-            Completed
-          </span>
-        );
+        return 'success';
       default:
-        return null;
+        return 'default';
     }
   };
 
-  const getDifficultyColor = (difficulty) => {
+  const getStatusLabel = (status) => {
+    switch (status) {
+      case 'not_started':
+        return 'Not Started';
+      case 'in_progress':
+        return 'In Progress';
+      case 'completed':
+        return 'Completed';
+      default:
+        return status;
+    }
+  };
+
+  const getDifficultyVariant = (difficulty) => {
     switch (difficulty?.toLowerCase()) {
       case 'beginner':
-        return 'text-green-600 dark:text-green-400';
+        return 'success';
       case 'intermediate':
-        return 'text-yellow-600 dark:text-yellow-400';
+        return 'warning';
       case 'advanced':
-        return 'text-red-600 dark:text-red-400';
+        return 'destructive';
       default:
-        return 'text-gray-600 dark:text-gray-400';
+        return 'secondary';
     }
   };
 
   const progress = path.progress_percentage || 0;
 
   return (
-    <div
+    <Card 
       onClick={onClick}
-      className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-xl transition-shadow cursor-pointer border border-gray-200 dark:border-gray-700 overflow-hidden group"
+      className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow group"
     >
       {/* Progress Bar */}
-      <div className="h-2 bg-gray-200 dark:bg-gray-700">
-        <div
-          className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-300"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
+      {path.status !== 'not_started' && (
+        <div className="h-1 bg-muted">
+          <div
+            className="h-full bg-primary transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
 
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         {/* Header */}
-        <div className="flex items-start justify-between mb-3">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <h3 className="text-base sm:text-lg font-semibold group-hover:text-primary transition-colors line-clamp-2 flex-1">
             {path.title}
           </h3>
-          {getStatusBadge(path.status)}
+          <Badge variant={getStatusVariant(path.status)}>
+            {getStatusLabel(path.status)}
+          </Badge>
         </div>
 
         {/* Description */}
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
+        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
           {path.description}
         </p>
 
         {/* Metadata */}
-        <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-4">
-          <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-3 text-sm mb-4">
+          <div className="flex items-center gap-1 text-muted-foreground">
             <Clock className="w-4 h-4" />
             <span>{path.estimated_duration_hours}h</span>
           </div>
-          <div className={`font-medium capitalize ${getDifficultyColor(path.difficulty_level)}`}>
+          <Badge variant={getDifficultyVariant(path.difficulty_level)} className="capitalize">
             {path.difficulty_level}
-          </div>
+          </Badge>
         </div>
 
         {/* Progress */}
         {path.status !== 'not_started' && (
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600 dark:text-gray-400">Progress</span>
-            <span className="font-semibold text-gray-900 dark:text-white">
+          <div className="flex items-center justify-between text-sm mb-3">
+            <span className="text-muted-foreground">Progress</span>
+            <span className="font-semibold">
               {Math.round(progress)}%
             </span>
           </div>
         )}
 
-        {/* Modules Info */}
-        {path.modules && path.modules.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-              <span>{path.modules.length} modules</span>
-              {path.status === 'not_started' && (
-                <span className="text-blue-600 dark:text-blue-400 font-medium">
-                  Start learning →
-                </span>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Footer */}
+        <div className="flex items-center justify-between pt-3 border-t text-sm">
+          <span className="text-muted-foreground">
+            {path.modules?.length || 0} modules
+          </span>
+          {path.status === 'not_started' && (
+            <span className="text-primary font-medium flex items-center gap-1 group-hover:gap-2 transition-all">
+              Start learning <ArrowRight className="w-4 h-4" />
+            </span>
+          )}
+        </div>
       </div>
-    </div>
+    </Card>
   );
 }

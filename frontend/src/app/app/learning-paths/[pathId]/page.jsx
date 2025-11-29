@@ -15,7 +15,7 @@ import {
 import PathDetailHeader from '@/components/learning-paths/PathDetailHeader';
 import ModulesList from '@/components/learning-paths/ModulesList';
 import ProgressSidebar from '@/components/learning-paths/ProgressSidebar';
-import { ArrowLeft, PlayCircle, BarChart3 } from 'lucide-react';
+import { ArrowLeft, PlayCircle, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 
 export default function LearningPathDetailPage({ params }) {
@@ -24,6 +24,7 @@ export default function LearningPathDetailPage({ params }) {
   const router = useRouter();
 
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showDebug, setShowDebug] = useState(true); // Show debug panel by default
 
   const {
     data: pathData,
@@ -130,6 +131,147 @@ export default function LearningPathDetailPage({ params }) {
               </button>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Debug Panel - Shows Generated Path Data */}
+      <div className="container mx-auto px-4 py-4 max-w-7xl">
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-400 dark:border-yellow-600 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setShowDebug(!showDebug)}
+            className="w-full flex items-center justify-between p-4 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🐛</span>
+              <h3 className="font-bold text-yellow-900 dark:text-yellow-200">
+                DEBUG: Generated Learning Path Data
+              </h3>
+            </div>
+            {showDebug ? (
+              <ChevronUp className="w-5 h-5 text-yellow-700 dark:text-yellow-300" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-yellow-700 dark:text-yellow-300" />
+            )}
+          </button>
+
+          {showDebug && (
+            <div className="p-4 border-t border-yellow-300 dark:border-yellow-700 bg-white dark:bg-gray-800">
+              <div className="space-y-4">
+                {/* Path ID */}
+                <div>
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Path ID:
+                  </p>
+                  <code className="block p-2 bg-gray-100 dark:bg-gray-900 rounded text-sm text-blue-600 dark:text-blue-400">
+                    {pathId}
+                  </code>
+                </div>
+
+                {/* Full Path Data */}
+                <div>
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Full Path Data (before video course fetch):
+                  </p>
+                  <pre className="p-4 bg-gray-100 dark:bg-gray-900 rounded text-xs overflow-x-auto max-h-96 overflow-y-auto">
+                    {JSON.stringify(pathData, null, 2)}
+                  </pre>
+                </div>
+
+                {/* Module Structure Summary */}
+                <div>
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Modules Summary:
+                  </p>
+                  <div className="p-3 bg-gray-100 dark:bg-gray-900 rounded text-sm">
+                    <p className="text-gray-700 dark:text-gray-300">
+                      Total Modules: <span className="font-bold">{pathData?.modules?.length || 0}</span>
+                    </p>
+                    {pathData?.modules?.map((module, idx) => (
+                      <div key={idx} className="mt-2 p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
+                        <p className="font-semibold text-gray-900 dark:text-white">
+                          {idx + 1}. {module.title}
+                        </p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                          Lessons: {module.lessons?.length || 0} | Order: {module.order}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Content Type Analysis - NEW! */}
+                <div>
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    📊 Content Type Analysis:
+                  </p>
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded text-sm border border-blue-200 dark:border-blue-700">
+                    {(() => {
+                      // Analyze lesson types across all modules
+                      const lessonTypes = {};
+                      const platforms = {};
+                      let totalLessons = 0;
+
+                      pathData?.modules?.forEach(module => {
+                        module.lessons?.forEach(lesson => {
+                          totalLessons++;
+                          // Count lesson types
+                          lessonTypes[lesson.type] = (lessonTypes[lesson.type] || 0) + 1;
+                          // Count platforms
+                          platforms[lesson.platform] = (platforms[lesson.platform] || 0) + 1;
+                        });
+                      });
+
+                      return (
+                        <>
+                          <div className="mb-3">
+                            <p className="font-semibold text-blue-900 dark:text-blue-200 mb-1">
+                              Lesson Types Distribution:
+                            </p>
+                            {Object.entries(lessonTypes).map(([type, count]) => (
+                              <div key={type} className="flex items-center justify-between py-1">
+                                <span className="text-gray-700 dark:text-gray-300 capitalize">
+                                  {type === 'video' ? '🎥' : type === 'article' ? '📄' : type === 'interactive' ? '💻' : '📝'} {type}:
+                                </span>
+                                <span className="font-bold text-blue-700 dark:text-blue-300">
+                                  {count} ({Math.round((count / totalLessons) * 100)}%)
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div>
+                            <p className="font-semibold text-blue-900 dark:text-blue-200 mb-1">
+                              Platform Distribution:
+                            </p>
+                            {Object.entries(platforms).map(([platform, count]) => (
+                              <div key={platform} className="flex items-center justify-between py-1">
+                                <span className="text-gray-700 dark:text-gray-300 capitalize">
+                                  {platform === 'youtube' ? '▶️' : platform === 'udemy' ? '🎓' : '🌐'} {platform}:
+                                </span>
+                                <span className="font-bold text-blue-700 dark:text-blue-300">
+                                  {count} lessons
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="mt-3 pt-3 border-t border-blue-200 dark:border-blue-700">
+                            <p className="text-xs text-blue-800 dark:text-blue-300">
+                              💡 <strong>Content Type Filtering Active:</strong> This path was generated based on your selected learning style preferences.
+                              {Object.keys(lessonTypes).includes('video') &&
+                                " Video content was included because you selected 'videos' or 'visual' learning style."}
+                              {!Object.keys(lessonTypes).includes('video') &&
+                                " No video content - you didn't select 'videos' or 'visual' learning style."}
+                            </p>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

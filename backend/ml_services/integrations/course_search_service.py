@@ -218,6 +218,66 @@ class CourseSearchService:
         }
         return goal_mapping.get(learning_goal, learning_goal.replace('_', ' ').title())
 
+    def _get_platforms_for_learning_styles(self, learning_styles: List[str]) -> Dict[str, bool]:
+        """
+        Determine which platforms to search based on user's selected learning styles.
+
+        Maps learning styles to content types and platforms:
+        - videos/visual → YouTube, Udemy video courses
+        - hands_on → Udemy, interactive platforms
+        - reading → Article platforms, documentation
+        - interactive → Coding challenge platforms
+
+        Args:
+            learning_styles: User's selected learning styles
+
+        Returns:
+            Dict with platform search flags (e.g., {'search_youtube': True, 'search_udemy': False})
+        """
+        # Default: search nothing if no styles selected
+        search_flags = {
+            'search_youtube': False,
+            'search_udemy': False,
+            'search_articles': False,
+            'search_interactive': False
+        }
+
+        # If no learning styles specified, search all platforms (backward compatibility)
+        if not learning_styles:
+            logger.info("📋 No learning styles specified - searching all platforms")
+            search_flags['search_youtube'] = True
+            search_flags['search_udemy'] = True
+            return search_flags
+
+        # Map learning styles to platform searches
+        for style in learning_styles:
+            if style in ['videos', 'visual']:
+                # User wants video content → search YouTube and video-based Udemy courses
+                search_flags['search_youtube'] = True
+                search_flags['search_udemy'] = True  # Udemy has video courses
+                logger.info(f"✅ '{style}' learning style → Enabling YouTube + Udemy search")
+
+            elif style == 'hands_on':
+                # User wants hands-on/project-based → search Udemy (structured courses with projects)
+                search_flags['search_udemy'] = True
+                logger.info(f"✅ '{style}' learning style → Enabling Udemy search")
+
+            elif style == 'reading':
+                # User wants text-based content → search article platforms
+                search_flags['search_articles'] = True
+                logger.info(f"✅ '{style}' learning style → Enabling article search")
+
+            elif style == 'interactive':
+                # User wants interactive content → search coding platforms
+                search_flags['search_interactive'] = True
+                logger.info(f"✅ '{style}' learning style → Enabling interactive platform search")
+
+        # Log final search strategy
+        active_platforms = [k.replace('search_', '') for k, v in search_flags.items() if v]
+        logger.info(f"🎯 Content Type Filter: Searching {', '.join(active_platforms) if active_platforms else 'NO PLATFORMS (no matching content types)'}")
+
+        return search_flags
+
     def search_courses(
         self,
         topic: str,
@@ -227,9 +287,14 @@ class CourseSearchService:
         """
         Search for courses across multiple platforms and rank by relevance.
 
+        NEW: Filters platforms based on user's selected learning_styles (content types).
+        - Only searches YouTube if 'videos' or 'visual' is selected
+        - Only searches Udemy if 'videos', 'visual', or 'hands_on' is selected
+        - Skips video platforms entirely if user doesn't want video content
+
         Args:
             topic: Topic/skill to search for (e.g., "React Hooks", "Python OOP")
-            user_preferences: User's learning preferences
+            user_preferences: User's learning preferences (must include basic_info.learning_style)
             max_results: Maximum number of courses to return
 
         Returns:
@@ -243,18 +308,32 @@ class CourseSearchService:
 
         all_courses = []
 
-        # Try real APIs first
-        if self.youtube_api_key:
+        # NEW: Get user's learning styles to filter platform searches
+        basic_info = user_preferences.get('basic_info', {})
+        learning_styles = basic_info.get('learning_style', [])
+
+        # Determine which platforms to search based on content type preferences
+        platform_flags = self._get_platforms_for_learning_styles(learning_styles)
+
+        # Search YouTube ONLY if user wants video content
+        if platform_flags['search_youtube'] and self.youtube_api_key:
             youtube_courses = self._search_youtube(topic, user_preferences, max_results=5)
             all_courses.extend(youtube_courses)
-        else:
+            logger.info(f"✅ YouTube search completed: {len(youtube_courses)} courses found")
+        elif platform_flags['search_youtube'] and not self.youtube_api_key:
             logger.warning("⚠️ YouTube API key not configured - skipping YouTube search")
+        elif not platform_flags['search_youtube']:
+            logger.info("⏭️ Skipping YouTube search - 'videos' or 'visual' not in learning styles")
 
-        if self.udemy_client_id and self.udemy_client_secret:
+        # Search Udemy ONLY if user wants video or hands-on content
+        if platform_flags['search_udemy'] and self.udemy_client_id and self.udemy_client_secret:
             udemy_courses = self._search_udemy(topic, max_results=5)
             all_courses.extend(udemy_courses)
-        else:
+            logger.info(f"✅ Udemy search completed: {len(udemy_courses)} courses found")
+        elif platform_flags['search_udemy'] and not (self.udemy_client_id and self.udemy_client_secret):
             logger.warning("⚠️ Udemy API credentials not configured - skipping Udemy search")
+        elif not platform_flags['search_udemy']:
+            logger.info("⏭️ Skipping Udemy search - 'videos', 'visual', or 'hands_on' not in learning styles")
 
         # Smart fallback logic based on configuration
         if not all_courses:
@@ -331,44 +410,75 @@ class CourseSearchService:
     )
     def _search_youtube_videos(self, topic: str, max_results: int = 5) -> List[Course]:
         """
-        Search for individual video tutorials on YouTube.
+        Search for individual video tutorials on YouTube with quality filtering.
+
+        NEW BEHAVIOR (Quality Filtering):
+        - Fetches 2x requested amount to account for filtering
+        - Applies freshness, length, authority, and engagement filters
+        - Returns only high-quality videos that meet all criteria
 
         Args:
             topic: Search query topic
-            max_results: Maximum number of results
+            max_results: Maximum number of quality results to return
 
         Returns:
-            List of Course objects from YouTube videos
+            List of Course objects from YouTube videos that pass quality filters
         """
         try:
+            # Fetch 2x amount to account for quality filtering
+            # If we want 5 results, fetch 10 so after filtering we still have ~5
+            max_results_with_buffer = min(max_results * 2, 50)  # YouTube max is 50
+
             # Build search parameters
             params = {
                 'part': 'snippet',
                 'q': topic,  # Direct topic search, no hardcoded suffix
                 'type': 'video',
                 'videoDefinition': 'high',
-                'maxResults': max_results,
+                'maxResults': max_results_with_buffer,
                 'key': self.youtube_api_key,
                 'relevanceLanguage': 'en',
                 'order': 'relevance'
             }
 
             # Make API request
-            logger.info(f"🔍 Searching YouTube videos for: {topic}")
+            logger.info(f"🔍 Searching YouTube videos for: {topic} (fetching {max_results_with_buffer}, target: {max_results})")
             response = self.session.get(self.youtube_api_url, params=params, timeout=10)
             response.raise_for_status()
 
             data = response.json()
             courses = []
+            filtered_count = 0
 
-            # Parse YouTube video results
+            # Parse YouTube video results with quality filtering
             for item in data.get('items', []):
                 snippet = item.get('snippet', {})
                 video_id = item.get('id', {}).get('videoId', '')
 
-                # Get video details for duration and ratings
-                video_details = self._get_youtube_video_details(video_id)
+                # Get video details WITH channel info for quality filtering
+                video_details = self._get_youtube_video_details(video_id, include_channel=True)
 
+                # Skip if video details fetch failed
+                if not video_details:
+                    logger.debug(f"⏭️ Skipping video {video_id}: failed to fetch details")
+                    filtered_count += 1
+                    continue
+
+                # NEW: Apply quality filters
+                video_metadata = {
+                    'published_at': snippet.get('publishedAt', ''),
+                    'title': snippet.get('title', '')
+                }
+
+                if not self._meets_quality_criteria(
+                    video_details,
+                    video_metadata,
+                    video_details.get('channel_details')
+                ):
+                    filtered_count += 1
+                    continue  # Skip low-quality videos
+
+                # Video passed all quality checks - create Course object
                 course = Course(
                     title=snippet.get('title', ''),
                     url=f"https://www.youtube.com/watch?v={video_id}",
@@ -387,6 +497,11 @@ class CourseSearchService:
                 )
                 courses.append(course)
 
+                # Stop if we've reached target count
+                if len(courses) >= max_results:
+                    break
+
+            logger.info(f"✅ Found {len(courses)} quality videos for '{topic}' (filtered {filtered_count})")
             return courses
 
         except requests.RequestException as e:
@@ -405,6 +520,8 @@ class CourseSearchService:
             return []
         except Exception as e:
             logger.error(f"❌ Error parsing YouTube results: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return []
 
     @log_external_api_call(
@@ -415,20 +532,41 @@ class CourseSearchService:
     )
     def _search_youtube_playlists(self, topic: str, max_results: int = 3) -> List[Course]:
         """
-        Search for structured course playlists on YouTube.
+        Search for YouTube playlists and EXPAND into individual video lessons.
 
-        Playlists are preferred for learning as they provide structured, sequential content.
+        NEW BEHAVIOR (Playlist Expansion):
+        - Searches for playlists (100 quota units)
+        - Expands each playlist into individual videos (1 quota per playlist)
+        - Fetches video details for quality filtering (1 quota per video)
+        - Returns Course objects for individual videos (not entire playlists)
+
+        This provides granular lesson tracking and better lesson sizing (5-20 min videos
+        vs 5-hour playlists).
 
         Args:
             topic: Search query topic
-            max_results: Maximum number of playlists to return
+            max_results: Maximum number of playlists to search (NOT final video count)
 
         Returns:
-            List of Course objects from YouTube playlists (marked with 📚 emoji)
+            List of Course objects for individual videos from playlists
+
+        Quota Cost Example (3 playlists, ~5 videos each after filtering):
+        - Playlist search: 100 units
+        - Playlist items: 1 × 3 = 3 units
+        - Video details: 1 × 15 = 15 units
+        - Channel details: 1 × 15 = 15 units (if enabled)
+        - Total: ~133 units
         """
         try:
+            # Load playlist configuration
+            playlist_config = settings.YOUTUBE_PLAYLIST_CONFIG
+
+            # Check if playlist expansion is enabled
+            if not playlist_config['expand_playlists']:
+                logger.info("⚙️ Playlist expansion disabled, skipping playlist search")
+                return []
+
             # Build search parameters for playlists
-            # Dynamic query - no hardcoded suffixes, let YouTube ranking find best matches
             params = {
                 'part': 'snippet',
                 'q': topic,  # Use topic directly for dynamic, personalized search
@@ -445,42 +583,92 @@ class CourseSearchService:
             response.raise_for_status()
 
             data = response.json()
-            courses = []
+            all_video_courses = []  # Will contain Course objects for individual videos
 
-            # Parse YouTube playlist results
+            # Process each playlist found
             for item in data.get('items', []):
                 snippet = item.get('snippet', {})
                 playlist_id = item.get('id', {}).get('playlistId', '')
 
-                # Get playlist details (video count, total duration)
+                # Get playlist metadata (video count)
                 playlist_details = self._get_youtube_playlist_details(playlist_id)
+                video_count = playlist_details.get('video_count', 0)
 
-                # Mark playlists with 📚 emoji for visual distinction
-                course = Course(
-                    title=f"📚 {snippet.get('title', '')}",
-                    url=f"https://www.youtube.com/playlist?list={playlist_id}",
-                    platform='youtube',
-                    description=snippet.get('description', ''),
-                    instructor=snippet.get('channelTitle', ''),
-                    duration_hours=playlist_details.get('total_duration_hours', 5.0),
-                    rating=4.5,  # Playlists don't have individual ratings, use default
-                    num_ratings=playlist_details.get('video_count', 10),
-                    difficulty='intermediate',
-                    price='free',
-                    thumbnail_url=snippet.get('thumbnails', {}).get('high', {}).get('url', ''),
-                    published_date=snippet.get('publishedAt', ''),
-                    language='english',
-                    tags=[topic, 'playlist']
+                # Skip small playlists (less than configured minimum)
+                if video_count < playlist_config['min_playlist_size']:
+                    logger.debug(f"⏭️ Skipping playlist {playlist_id}: only {video_count} videos (min: {playlist_config['min_playlist_size']})")
+                    continue
+
+                # EXPANSION: Fetch individual videos from this playlist
+                logger.info(f"📋 Expanding playlist '{snippet.get('title', '')}' ({video_count} videos)")
+                playlist_items = self._get_youtube_playlist_items(
+                    playlist_id,
+                    max_items=playlist_config['max_videos_per_playlist']
                 )
-                courses.append(course)
 
-            return courses
+                # Convert each playlist video into a Course object
+                for idx, video_item in enumerate(playlist_items):
+                    video_id = video_item['video_id']
+
+                    # Fetch full video details for quality filtering
+                    video_details = self._get_youtube_video_details(
+                        video_id,
+                        include_channel=True  # For authority check
+                    )
+
+                    # Skip if video details fetch failed
+                    if not video_details:
+                        logger.debug(f"⏭️ Skipping video {video_id}: failed to fetch details")
+                        continue
+
+                    # NEW: Apply quality filters
+                    video_metadata = {
+                        'published_at': video_item.get('published_at', video_details.get('published_at', '')),
+                        'title': video_item['title']
+                    }
+
+                    if not self._meets_quality_criteria(
+                        video_details,
+                        video_metadata,
+                        video_details.get('channel_details')
+                    ):
+                        logger.debug(f"⏭️ Video '{video_item['title'][:50]}...' filtered out (quality criteria)")
+                        continue
+
+                    # Create Course object for individual video (preserving playlist context)
+                    course = Course(
+                        title=video_item['title'],  # No 📚 emoji (it's a video, not a playlist)
+                        url=f"https://www.youtube.com/watch?v={video_id}&list={playlist_id}",  # Preserves playlist context
+                        platform='youtube',
+                        description=video_item['description'],
+                        instructor=video_item.get('channel_title', snippet.get('channelTitle', '')),
+                        duration_hours=video_details.get('duration_hours', 0.25),
+                        rating=video_details.get('rating', 4.5),
+                        num_ratings=video_details.get('like_count', 0),
+                        difficulty='intermediate',
+                        price='free',
+                        thumbnail_url=video_item['thumbnail'],
+                        published_date=video_item.get('published_at', ''),
+                        language='english',
+                        tags=[
+                            topic,
+                            'playlist_video',  # Identifies this as from a playlist
+                            f'playlist:{playlist_id}',  # Tracks which playlist
+                            f'position:{idx + 1}'  # Original position in playlist
+                        ]
+                    )
+                    all_video_courses.append(course)
+
+            logger.info(f"✅ Expanded {len(data.get('items', []))} playlists → {len(all_video_courses)} quality videos for '{topic}'")
+            return all_video_courses
 
         except requests.RequestException as e:
             logger.error(f"❌ YouTube playlist search failed: {e}")
             return []
         except Exception as e:
-            logger.error(f"❌ Error parsing YouTube playlist results: {e}")
+            logger.error(f"❌ Error during playlist expansion: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return []
 
     @log_external_api_call(
@@ -489,19 +677,22 @@ class CourseSearchService:
         include_headers=False,
         truncate_response_at=1000
     )
-    def _get_youtube_video_details(self, video_id: str) -> Dict:
+    def _get_youtube_video_details(self, video_id: str, include_channel: bool = False) -> Dict:
         """
         Get detailed information about a YouTube video.
 
+        Now supports optional channel data fetching for authority filtering.
+
         Args:
             video_id: YouTube video ID
+            include_channel: If True, fetch channel details for authority check (+1 quota unit)
 
         Returns:
-            Dictionary with duration, rating, and view count
+            Dictionary with duration, rating, view count, published_at, and optionally channel_details
         """
         try:
             params = {
-                'part': 'contentDetails,statistics',
+                'part': 'contentDetails,statistics,snippet',  # Added snippet for published_at and channel_id
                 'id': video_id,
                 'key': self.youtube_api_key
             }
@@ -520,6 +711,7 @@ class CourseSearchService:
             item = data['items'][0]
             content_details = item.get('contentDetails', {})
             statistics = item.get('statistics', {})
+            snippet = item.get('snippet', {})  # NEW: Get snippet for published date and channel
 
             # Parse ISO 8601 duration (e.g., PT15M33S)
             duration = content_details.get('duration', 'PT0M')
@@ -528,12 +720,22 @@ class CourseSearchService:
             # Calculate engagement-based rating from likes, comments, and views
             engagement_rating = self._calculate_engagement_score(statistics)
 
-            return {
+            result = {
                 'duration_hours': duration_hours,
                 'view_count': int(statistics.get('viewCount', 0)),
                 'like_count': int(statistics.get('likeCount', 0)),
-                'rating': engagement_rating  # Dynamic rating based on engagement metrics
+                'rating': engagement_rating,  # Dynamic rating based on engagement metrics
+                'published_at': snippet.get('publishedAt', '')  # NEW: For freshness filter
             }
+
+            # NEW: Optionally fetch channel details for authority verification
+            if include_channel:
+                channel_id = snippet.get('channelId', '')
+                if channel_id:
+                    channel_details = self._get_youtube_channel_details(channel_id)
+                    result['channel_details'] = channel_details
+
+            return result
 
         except Exception as e:
             logger.warning(f"⚠️ Failed to get YouTube video details: {e}")
@@ -596,6 +798,222 @@ class CourseSearchService:
                 'video_count': 10,
                 'total_duration_hours': 5.0
             }
+
+    @log_external_api_call(
+        api_name="YouTube Playlist Items",
+        quota_units=1,
+        include_headers=False,
+        truncate_response_at=2000
+    )
+    def _get_youtube_playlist_items(self, playlist_id: str, max_items: int = 10) -> List[Dict]:
+        """
+        Fetch individual videos from a YouTube playlist.
+
+        Expands playlists into individual video objects for granular lesson tracking.
+        This allows each video in a playlist to be a separate lesson with its own
+        progress tracking, rather than treating the entire playlist as one lesson.
+
+        Args:
+            playlist_id: YouTube playlist ID
+            max_items: Maximum videos to fetch (default: 10)
+
+        Returns:
+            List of dicts with video_id, title, description, position, thumbnail, published_at
+
+        API Endpoint: youtube/v3/playlistItems
+        Quota Cost: 1 unit (fetches up to 50 videos per request)
+        """
+        try:
+            params = {
+                'part': 'snippet,contentDetails',
+                'playlistId': playlist_id,
+                'maxResults': min(max_items, 50),  # YouTube max = 50
+                'key': self.youtube_api_key
+            }
+
+            response = self.session.get(
+                "https://www.googleapis.com/youtube/v3/playlistItems",
+                params=params,
+                timeout=10
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            playlist_items = []
+
+            for item in data.get('items', []):
+                snippet = item.get('snippet', {})
+                content_details = item.get('contentDetails', {})
+
+                # Skip private/deleted videos
+                if snippet.get('title') in ['Private video', 'Deleted video']:
+                    logger.debug(f"⏭️ Skipping private/deleted video in playlist {playlist_id}")
+                    continue
+
+                playlist_items.append({
+                    'video_id': content_details.get('videoId', ''),
+                    'title': snippet.get('title', ''),
+                    'description': snippet.get('description', ''),
+                    'position': snippet.get('position', 0),
+                    'thumbnail': snippet.get('thumbnails', {}).get('high', {}).get('url', ''),
+                    'published_at': snippet.get('publishedAt', ''),
+                    'channel_title': snippet.get('channelTitle', ''),
+                    'channel_id': snippet.get('channelId', '')
+                })
+
+            logger.info(f"📋 Fetched {len(playlist_items)} videos from playlist {playlist_id}")
+            return playlist_items
+
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to fetch playlist items: {e}")
+            return []
+
+    @log_external_api_call(
+        api_name="YouTube Channel Details",
+        quota_units=1,
+        include_headers=False,
+        truncate_response_at=500
+    )
+    def _get_youtube_channel_details(self, channel_id: str) -> Dict:
+        """
+        Fetch channel information for authority verification.
+
+        Channel authority is determined primarily by subscriber count, which is
+        a reliable indicator of content quality and creator credibility.
+
+        Args:
+            channel_id: YouTube channel ID
+
+        Returns:
+            Dict with subscriber_count, created_at, country
+
+        Quota Cost: 1 unit per channel
+        Cache Strategy: Should implement Redis 7-day cache (channels rarely change)
+        """
+        try:
+            # TODO: Add Redis caching in future optimization
+            # cache_key = f"yt_channel:{channel_id}"
+            # cached = redis_client.get(cache_key)
+            # if cached: return json.loads(cached)
+
+            params = {
+                'part': 'snippet,statistics',
+                'id': channel_id,
+                'key': self.youtube_api_key
+            }
+
+            response = self.session.get(
+                "https://www.googleapis.com/youtube/v3/channels",
+                params=params,
+                timeout=5
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            if not data.get('items'):
+                return {'subscriber_count': 0}
+
+            item = data['items'][0]
+            snippet = item.get('snippet', {})
+            statistics = item.get('statistics', {})
+
+            result = {
+                'channel_id': channel_id,
+                'subscriber_count': int(statistics.get('subscriberCount', 0)),
+                'created_at': snippet.get('publishedAt', ''),
+                'country': snippet.get('country', '')
+            }
+
+            # TODO: Cache for 7 days in future optimization
+            # redis_client.setex(cache_key, 604800, json.dumps(result))
+
+            return result
+
+        except Exception as e:
+            logger.warning(f"⚠️ Channel fetch failed for {channel_id}: {e}")
+            return {'subscriber_count': 0}
+
+    def _meets_quality_criteria(
+        self,
+        video_details: Dict,
+        video_metadata: Dict,
+        channel_details: Dict = None
+    ) -> bool:
+        """
+        Check if video meets quality standards for learning content.
+
+        Quality Filters (ALL must pass):
+        1. Freshness: Published within configured days (default: last 2 years)
+        2. Optimal length: Video duration in configured range (default: 5-20 minutes)
+        3. Channel authority: Minimum subscribers OR high engagement (fallback)
+        4. Minimum engagement: Minimum rating and view count
+
+        Args:
+            video_details: From _get_youtube_video_details() - duration, rating, views
+            video_metadata: Published date, title from playlist/search
+            channel_details: Subscriber count, verification status (optional)
+
+        Returns:
+            True if ALL criteria met, False otherwise with debug logging
+        """
+        from datetime import datetime, timedelta
+
+        # Load filter configuration from settings
+        quality_filters = settings.YOUTUBE_QUALITY_FILTERS
+
+        # FILTER 1: Freshness (last N years)
+        published_str = video_metadata.get('published_at', '')
+        if published_str:
+            try:
+                published_date = datetime.fromisoformat(published_str.replace('Z', '+00:00'))
+                cutoff_date = datetime.now(published_date.tzinfo) - timedelta(days=quality_filters['freshness_days'])
+
+                if published_date < cutoff_date:
+                    logger.debug(f"❌ Freshness: {published_date.strftime('%Y-%m-%d')} > {quality_filters['freshness_days']} days old")
+                    return False
+            except Exception as e:
+                logger.warning(f"⚠️ Date parse error: {e}")
+
+        # FILTER 2: Optimal video length (bite-sized learning)
+        duration_mins = video_details.get('duration_hours', 0) * 60
+
+        if duration_mins < quality_filters['min_length_minutes']:
+            logger.debug(f"❌ Length: {duration_mins:.1f} min < {quality_filters['min_length_minutes']} min (too short)")
+            return False
+
+        if duration_mins > quality_filters['max_length_minutes']:
+            logger.debug(f"❌ Length: {duration_mins:.1f} min > {quality_filters['max_length_minutes']} min (too long)")
+            return False
+
+        # FILTER 3: Channel authority (if enabled and available)
+        if quality_filters['enable_channel_check'] and channel_details:
+            subscriber_count = channel_details.get('subscriber_count', 0)
+
+            # Pass if meets subscriber threshold
+            if subscriber_count >= quality_filters['min_subscribers']:
+                logger.debug(f"✅ Authority: {subscriber_count:,} subscribers")
+            else:
+                # Fallback: require high engagement if low subscribers
+                engagement = video_details.get('rating', 0)
+                if engagement < 4.0:
+                    logger.debug(f"❌ Authority: {subscriber_count} subs < {quality_filters['min_subscribers']}, engagement {engagement} < 4.0")
+                    return False
+
+        # FILTER 4: Minimum engagement metrics
+        rating = video_details.get('rating', 0)
+        views = video_details.get('view_count', 0)
+
+        if rating < quality_filters['min_engagement_score']:
+            logger.debug(f"❌ Engagement: rating {rating} < {quality_filters['min_engagement_score']}")
+            return False
+
+        if views < quality_filters['min_views']:
+            logger.debug(f"❌ Engagement: {views} views < {quality_filters['min_views']}")
+            return False
+
+        # All filters passed!
+        logger.debug(f"✅ Quality: {duration_mins:.1f}min, {views:,} views, rating {rating:.1f}")
+        return True
 
     def _parse_youtube_duration(self, duration_str: str) -> float:
         """

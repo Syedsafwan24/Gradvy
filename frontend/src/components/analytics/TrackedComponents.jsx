@@ -1,6 +1,9 @@
 /**
  * Tracked Component Wrappers
- * These components automatically add analytics tracking to common UI elements
+ * These components autTrackedButton.displayName = 'TrackedButton';
+
+// Tracked Link Component
+const TrackedLink = forwardRef({ically add analytics tracking to common UI elements
  */
 
 'use client';
@@ -12,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 
 // Tracked Button Component
-export const TrackedButton = forwardRef(({ 
+const TrackedButton = forwardRef(({ 
   onClick, 
   children, 
   trackingName,
@@ -111,7 +114,7 @@ export const TrackedLink = forwardRef(({
 TrackedLink.displayName = 'TrackedLink';
 
 // Tracked Input Component with focus/blur tracking
-export const TrackedInput = forwardRef(({ 
+const TrackedInput = forwardRef(({ 
   onFocus, 
   onBlur, 
   onChange,
@@ -180,7 +183,7 @@ export const TrackedInput = forwardRef(({
 TrackedInput.displayName = 'TrackedInput';
 
 // Tracked Card Component for course/content cards
-export const TrackedCard = forwardRef(({ 
+const TrackedCard = forwardRef(({ 
   children, 
   onClick,
   trackingName,
@@ -287,7 +290,7 @@ export const TrackedCard = forwardRef(({
 TrackedCard.displayName = 'TrackedCard';
 
 // Tracked Form Component
-export const TrackedForm = forwardRef(({ 
+const TrackedForm = forwardRef(({ 
   onSubmit, 
   children, 
   trackingName,
@@ -356,7 +359,7 @@ export const TrackedForm = forwardRef(({
 TrackedForm.displayName = 'TrackedForm';
 
 // Course-specific tracked components
-export const TrackedCourseCard = forwardRef(({ 
+const TrackedCourseCard = forwardRef(({ 
   courseId, 
   courseData = {},
   onEnroll,
@@ -415,7 +418,7 @@ export const TrackedCourseCard = forwardRef(({
 TrackedCourseCard.displayName = 'TrackedCourseCard';
 
 // Search component with automatic tracking
-export const TrackedSearchInput = forwardRef(({ 
+const TrackedSearchInput = forwardRef(({ 
   onSearch, 
   onResults,
   placeholder = "Search courses...",
@@ -464,7 +467,7 @@ export const TrackedSearchInput = forwardRef(({
 TrackedSearchInput.displayName = 'TrackedSearchInput';
 
 // Video player with comprehensive tracking
-export const TrackedVideoPlayer = forwardRef(({ 
+const TrackedVideoPlayer = forwardRef(({ 
   videoId,
   videoData = {},
   src,

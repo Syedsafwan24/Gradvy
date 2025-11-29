@@ -4,26 +4,23 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import { selectCurrentUser } from '@/store/slices/authSlice';
 import AccountSettings from '@/components/settings/AccountSettings';
-import { Card } from '@/components/ui/card';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import PageLayout from '@/components/layouts/PageLayout';
+import SectionCard from '@/components/layouts/SectionCard';
 
 const AccountSettingsPage = () => {
   const user = useSelector(selectCurrentUser);
 
   return (
     <ProtectedRoute requireAuth={true} redirectTo="/login">
-      <div className="p-6">
-        {/* Page Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Account Settings</h1>
-          <p className="text-gray-600">Manage your account and subscription settings</p>
-        </div>
-
-        {/* Account Settings Card */}
-        <Card className="p-6">
+      <PageLayout
+        title="Account Settings"
+        description="Manage your account and subscription settings"
+      >
+        <SectionCard>
           <AccountSettings user={user} />
-        </Card>
-      </div>
+        </SectionCard>
+      </PageLayout>
     </ProtectedRoute>
   );
 };

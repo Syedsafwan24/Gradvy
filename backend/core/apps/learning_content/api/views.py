@@ -73,6 +73,64 @@ class GenerateLearningPathView(APIView):
         return defaults.get(platform.lower(), defaults['default'])
 
     @staticmethod
+    def _determine_lesson_type(platform: str, learning_styles: List[str]) -> str:
+        """
+        Determine lesson type based on platform and user's learning style preferences.
+
+        This ensures lesson types match the user's selected content type preferences:
+        - If user selected 'videos' → lessons are marked as 'video'
+        - If user selected 'reading' → lessons are marked as 'article'
+        - If user selected 'hands_on' → lessons are marked as 'interactive'
+        - If user selected 'interactive' → lessons are marked as 'interactive'
+
+        Args:
+            platform: Course platform (youtube, udemy, coursera, etc.)
+            learning_styles: User's selected learning styles
+
+        Returns:
+            Lesson type string ('video', 'article', 'interactive', 'project', 'quiz')
+        """
+        # Map platforms to their primary content types
+        platform_types = {
+            'youtube': 'video',
+            'udemy': 'video',  # Udemy is primarily video-based
+            'coursera': 'video',
+            'edx': 'video',
+            'pluralsight': 'video',
+            'linkedin': 'video',
+            'medium': 'article',
+            'dev_to': 'article',
+            'freecodecamp': 'interactive',
+            'codecademy': 'interactive',
+            'leetcode': 'interactive',
+            'preview': 'video'  # Preview/mock data defaults to video
+        }
+
+        # Get platform's default type
+        default_type = platform_types.get(platform.lower(), 'article')
+
+        # Override based on user's learning style preferences
+        # This ensures the type matches what the user actually wants
+        if 'videos' in learning_styles or 'visual' in learning_styles:
+            # User wants videos - keep video types
+            if default_type == 'video':
+                return 'video'
+        elif 'hands_on' in learning_styles:
+            # User wants hands-on - prefer interactive/project type
+            if platform in ['udemy', 'coursera']:
+                return 'project'  # These platforms offer project-based courses
+            return 'interactive'
+        elif 'reading' in learning_styles:
+            # User wants reading material - prefer article type
+            return 'article'
+        elif 'interactive' in learning_styles:
+            # User wants interactive content
+            return 'interactive'
+
+        # Fallback to platform default
+        return default_type
+
+    @staticmethod
     def analyze_roadmap_complexity(roadmap) -> float:
         """
         Analyze roadmap structure to determine complexity score (0.0 to 1.0).
@@ -385,6 +443,8 @@ class GenerateLearningPathView(APIView):
             # Step 1: Get user preferences
             try:
                 user_preference = UserPreference.objects.get(user_id=request.user.id)
+                logger.info(f"📥 UserPreference fetched for user {request.user.id}")
+                logger.debug(f"   Profile completion: {user_preference.profile_completion_percentage}%")
             except UserPreference.DoesNotExist:
                 return APIError.create(
                     message="User preferences not found. Please complete onboarding first.",
@@ -401,7 +461,19 @@ class GenerateLearningPathView(APIView):
                 )
 
             # Step 2: Build generation request from preferences (with optional overrides)
+            logger.info(f"📋 Loading preferences for user {request.user.id}")
+
+            # Safe access to basic_info with null-safety check
             basic_info = user_preference.basic_info
+            if not basic_info:
+                logger.error(f"❌ basic_info is None for user {request.user.id}")
+                return APIError.create(
+                    message="User profile basic information is missing. Please complete onboarding.",
+                    code="BASIC_INFO_MISSING",
+                    status_code=StatusCodes.BAD_REQUEST
+                )
+
+            logger.info(f"✅ basic_info loaded: goals={basic_info.learning_goals}, level={basic_info.experience_level}")
 
             # Generate unique request ID for tracking and logging
             request_id = str(uuid.uuid4())
@@ -417,7 +489,37 @@ class GenerateLearningPathView(APIView):
                 target_timeline=validated_data.get('target_timeline', basic_info.target_timeline),
             )
 
-            # Build user preferences dictionary for services
+            # Build user preferences dictionary for services with safe content_preferences access
+            logger.info(f"🔨 Building preferences dictionary...")
+
+            # Safe access to content_preferences with detailed logging
+            content_prefs = user_preference.content_preferences
+            if content_prefs:
+                try:
+                    content_prefs_dict = content_prefs.to_mongo() if hasattr(content_prefs, 'to_mongo') else {}
+                    logger.info(f"✅ content_preferences loaded from database: {list(content_prefs_dict.keys())}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to serialize content_preferences: {e}, using defaults")
+                    content_prefs_dict = {
+                        'preferred_platforms': ['youtube', 'udemy'],
+                        'content_types': ['video', 'interactive'],
+                        'difficulty_preference': 'mixed',
+                        'duration_preference': 'mixed',
+                        'language_preference': ['english'],
+                        'instructor_ratings_min': 3.0
+                    }
+            else:
+                logger.warning(f"⚠️ content_preferences is None for user {request.user.id}, using defaults")
+                # Create minimal default content preferences
+                content_prefs_dict = {
+                    'preferred_platforms': ['youtube', 'udemy'],
+                    'content_types': ['video', 'interactive'],
+                    'difficulty_preference': 'mixed',
+                    'duration_preference': 'mixed',
+                    'language_preference': ['english'],
+                    'instructor_ratings_min': 3.0
+                }
+
             user_preferences_dict = {
                 'basic_info': {
                     'learning_goals': generation_request.learning_goals,
@@ -427,12 +529,15 @@ class GenerateLearningPathView(APIView):
                     'learning_style': generation_request.learning_styles,
                     'target_timeline': generation_request.target_timeline,
                 },
-                'content_preferences': user_preference.content_preferences.to_mongo() if user_preference.content_preferences else {}
+                'content_preferences': content_prefs_dict
             }
+
+            logger.info(f"📦 Final preferences_dict built successfully")
+            logger.debug(f"   Keys: {list(user_preferences_dict.keys())}")
+            logger.debug(f"   content_preferences keys: {list(user_preferences_dict.get('content_preferences', {}).keys())}")
 
             # Step 3: Smart cache check with preference hash comparison (unless force_regenerate)
             # Only return cached path if preferences haven't changed
-            logger = logging.getLogger(__name__)
             if not force_regenerate:
                 # Calculate current preference hash
                 current_pref_hash = self._calculate_preference_hash(user_preferences_dict, generation_request)
@@ -523,11 +628,19 @@ class GenerateLearningPathView(APIView):
                 lessons = []
                 for scored_course in scored_courses[:dynamic_lesson_count]:
                     course = scored_course.course
+
+                    # NEW: Determine lesson type based on user's learning_styles + platform
+                    # This respects user's content type preferences
+                    lesson_type = self._determine_lesson_type(
+                        course.platform,
+                        generation_request.learning_styles
+                    )
+
                     lessons.append({
                         'lesson_id': f"{node.id}-lesson-{len(lessons) + 1}",
                         'title': course.title,
                         'description': course.description,
-                        'type': 'video' if course.platform == 'youtube' else 'article',
+                        'type': lesson_type,  # Now respects user's content preferences!
                         'duration_minutes': int(course.duration_hours * 60),
                         'url': course.url,
                         'thumbnail': course.thumbnail_url or self._get_default_thumbnail(course.platform),

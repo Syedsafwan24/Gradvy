@@ -2,13 +2,16 @@
 
 import React from 'react';
 import { useSelector } from 'react-redux';
-import { motion } from 'framer-motion';
-import { User, BookOpen, TrendingUp, Clock, Award } from 'lucide-react';
+import { User, BookOpen, TrendingUp, Shield, Award, Target, Rocket } from 'lucide-react';
 import { selectCurrentUser } from '@/store/slices/authSlice';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import ProfileCompletionCard from '@/components/dashboard/ProfileCompletionCard';
 import { useProfileCompletionPrompts } from '@/hooks/useProfileCompletionPrompts';
+import PageLayout from '@/components/layouts/PageLayout';
+import SectionCard from '@/components/layouts/SectionCard';
 
 const DashboardPage = () => {
   const user = useSelector(selectCurrentUser);
@@ -29,148 +32,168 @@ const DashboardPage = () => {
 
   return (
     <ProtectedRoute>
-      <div className="p-6">
-        {/* Page Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600 mt-2">
-            Welcome back, {user?.first_name || 'User'}! Here's what's happening with your account.
-          </p>
+      <PageLayout
+        title="Dashboard"
+        description={`Welcome back, ${user?.first_name || 'User'}! Here's your learning overview.`}
+      >
+        {/* Quick Stats Grid */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6 sm:mb-8">
+          <Card className="p-4 border border-gray-200 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs sm:text-sm text-gray-600">Active Courses</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">0</p>
+              </div>
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <BookOpen className="w-5 h-5 text-primary" />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-4 border border-gray-200 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs sm:text-sm text-gray-600">Learning Paths</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">0</p>
+              </div>
+              <div className="p-2 bg-success/10 rounded-lg">
+                <Target className="w-5 h-5 text-success" />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-4 border border-gray-200 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs sm:text-sm text-gray-600">Achievements</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">0</p>
+              </div>
+              <div className="p-2 bg-warning/10 rounded-lg">
+                <Award className="w-5 h-5 text-warning" />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-4 border border-gray-200 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs sm:text-sm text-gray-600">Streak</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">0d</p>
+              </div>
+              <div className="p-2 bg-info/10 rounded-lg">
+                <Rocket className="w-5 h-5 text-info" />
+              </div>
+            </div>
+          </Card>
         </div>
 
-        {/* User Profile Summary */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="mb-8"
-        >
-          <Card className="p-6">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center space-x-4">
-                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
-                  <span className="text-xl font-semibold text-blue-700">
-                    {user?.first_name?.charAt(0) || user?.email?.charAt(0) || 'U'}
-                  </span>
-                </div>
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    {user?.first_name && user?.last_name 
-                      ? `${user.first_name} ${user.last_name}`
-                      : user?.email || 'User'}
-                  </h2>
-                  <p className="text-gray-600">{user?.email}</p>
-                  <p className="text-sm text-gray-500">
-                    Member since {formatJoinDate(user?.date_joined)}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center space-x-3">
-                {user?.is_mfa_enabled && (
-                  <div className="flex items-center space-x-2 bg-green-100 text-green-800 px-3 py-2 rounded-full text-sm font-medium">
-                    <TrendingUp className="h-4 w-4" />
-                    <span>2FA Protected</span>
-                  </div>
-                )}
-                <div className="flex items-center space-x-2 bg-blue-100 text-blue-800 px-3 py-2 rounded-full text-sm font-medium">
-                  <User className="h-4 w-4" />
-                  <span>Active</span>
-                </div>
-              </div>
+        {/* User Profile Card */}
+        <SectionCard className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <Avatar className="w-16 h-16 sm:w-20 sm:h-20">
+              <AvatarFallback className="text-lg sm:text-xl bg-primary/10 text-primary">
+                {user?.first_name?.charAt(0) || user?.email?.charAt(0) || 'U'}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-900 truncate">
+                {user?.first_name && user?.last_name 
+                  ? `${user.first_name} ${user.last_name}`
+                  : user?.email || 'User'}
+              </h2>
+              <p className="text-sm text-gray-600 truncate">{user?.email}</p>
+              <p className="text-xs sm:text-sm text-gray-500 mt-1">
+                Member since {formatJoinDate(user?.date_joined)}
+              </p>
             </div>
-          </Card>
-        </motion.div>
+            <div className="flex gap-2 w-full sm:w-auto">
+              <Badge variant="success">Active</Badge>
+              {user?.is_mfa_enabled && (
+                <Badge variant="purple">
+                  <Shield className="w-3 h-3 mr-1" />
+                  2FA
+                </Badge>
+              )}
+            </div>
+          </div>
+        </SectionCard>
 
         {/* Profile Completion Card */}
-        <ProfileCompletionCard user={user} />
+        <div className="mb-6 sm:mb-8">
+          <ProfileCompletionCard user={user} />
+        </div>
 
         {/* Getting Started */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          className="mb-8"
+        <SectionCard 
+          className="mb-6 sm:mb-8 bg-primary/5 border-primary/20"
         >
-          <Card className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-            <div className="flex items-start space-x-4">
-              <div className="bg-blue-100 p-3 rounded-full">
-                <BookOpen className="h-6 w-6 text-blue-600" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  Ready to start your learning journey?
-                </h3>
-                <p className="text-gray-700 mb-4">
-                  Your account is set up and ready to go. Explore personalized learning paths, 
-                  track your progress, and achieve your goals with AI-powered recommendations.
-                </p>
-                <div className="flex flex-wrap gap-3">
-                  <div className="flex items-center space-x-2 bg-white bg-opacity-60 px-3 py-2 rounded-lg">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span className="text-sm font-medium">Account Active</span>
-                  </div>
-                  <div className="flex items-center space-x-2 bg-white bg-opacity-60 px-3 py-2 rounded-lg">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span className="text-sm font-medium">Profile Complete</span>
-                  </div>
-                  {user?.is_mfa_enabled && (
-                    <div className="flex items-center space-x-2 bg-white bg-opacity-60 px-3 py-2 rounded-lg">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <span className="text-sm font-medium">Security Enhanced</span>
-                    </div>
-                  )}
-                </div>
+          <div className="flex flex-col sm:flex-row items-start gap-4">
+            <div className="p-3 bg-primary/10 rounded-lg shrink-0">
+              <Rocket className="w-6 h-6 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
+                Ready to start your learning journey?
+              </h3>
+              <p className="text-sm text-gray-700 mb-4">
+                Your account is set up and ready to go. Explore personalized learning paths, 
+                track your progress, and achieve your goals with AI-powered recommendations.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="success" className="text-xs">
+                  Account Active
+                </Badge>
+                <Badge variant="default" className="text-xs">
+                  Profile Complete
+                </Badge>
+                {user?.is_mfa_enabled && (
+                  <Badge variant="purple" className="text-xs">
+                    Security Enhanced
+                  </Badge>
+                )}
               </div>
             </div>
-          </Card>
-        </motion.div>
+          </div>
+        </SectionCard>
 
         {/* Account Overview */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-        >
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-6">Account Overview</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="text-center">
-                <div className="bg-blue-100 p-4 rounded-full inline-flex items-center justify-center mb-3">
-                  <User className="h-6 w-6 text-blue-600" />
-                </div>
-                <h4 className="font-medium text-gray-900">Profile</h4>
-                <p className="text-sm text-gray-600 mt-1">
-                  Your account information and preferences are configured
-                </p>
+        <SectionCard title="Account Overview">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+            <div className="text-center p-4">
+              <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 bg-primary/10 rounded-lg mb-3">
+                <User className="w-6 h-6 text-primary" />
               </div>
-              
-              <div className="text-center">
-                <div className="bg-green-100 p-4 rounded-full inline-flex items-center justify-center mb-3">
-                  <TrendingUp className="h-6 w-6 text-green-600" />
-                </div>
-                <h4 className="font-medium text-gray-900">Security</h4>
-                <p className="text-sm text-gray-600 mt-1">
-                  {user?.is_mfa_enabled 
-                    ? 'Two-factor authentication is enabled'
-                    : 'Consider enabling 2FA for better security'
-                  }
-                </p>
-              </div>
-              
-              <div className="text-center">
-                <div className="bg-purple-100 p-4 rounded-full inline-flex items-center justify-center mb-3">
-                  <BookOpen className="h-6 w-6 text-purple-600" />
-                </div>
-                <h4 className="font-medium text-gray-900">Learning</h4>
-                <p className="text-sm text-gray-600 mt-1">
-                  Ready to explore personalized learning paths
-                </p>
-              </div>
+              <h4 className="text-sm sm:text-base font-semibold text-gray-900">Profile</h4>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                Your account information and preferences are configured
+              </p>
             </div>
-          </Card>
-        </motion.div>
-      </div>
+            
+            <div className="text-center p-4">
+              <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 bg-success/10 rounded-lg mb-3">
+                <Shield className="w-6 h-6 text-success" />
+              </div>
+              <h4 className="text-sm sm:text-base font-semibold text-gray-900">Security</h4>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                {user?.is_mfa_enabled 
+                  ? 'Two-factor authentication is enabled'
+                  : 'Consider enabling 2FA for better security'
+                }
+              </p>
+            </div>
+            
+            <div className="text-center p-4">
+              <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 bg-warning/10 rounded-lg mb-3">
+                <BookOpen className="w-6 h-6 text-warning" />
+              </div>
+              <h4 className="text-sm sm:text-base font-semibold text-gray-900">Learning</h4>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                Ready to explore personalized learning paths
+              </p>
+            </div>
+          </div>
+        </SectionCard>
+      </PageLayout>
     </ProtectedRoute>
   );
 };

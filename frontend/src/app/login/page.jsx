@@ -157,9 +157,9 @@ const LoginPage = () => {
   // Show loading until forms are ready
   if (!formsReady) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>
@@ -168,24 +168,18 @@ const LoginPage = () => {
 
   if (mfaRequired) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="w-full max-w-md"
-        >
-          <Card className="p-8 shadow-2xl">
-            <div className="text-center mb-8">
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                Two-Factor Authentication
-              </h1>
-              <p className="text-gray-600">
-                Please enter the 6-digit code from your authenticator app
-              </p>
-            </div>
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
+        <Card className="w-full max-w-md p-6 sm:p-8 border-0 shadow-xl">
+          <div className="text-center mb-6 sm:mb-8">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+              Two-Factor Authentication
+            </h1>
+            <p className="text-sm text-gray-600">
+              Enter the 6-digit code from your authenticator app
+            </p>
+          </div>
 
-            <form onSubmit={handleMFASubmit(onMFASubmit)} className="space-y-6">
+          <form onSubmit={handleMFASubmit(onMFASubmit)} className="space-y-6">
               <div>
                 <label htmlFor="code" className="block text-sm font-medium text-gray-700 mb-4 text-center">
                   Authentication Code
@@ -341,158 +335,134 @@ const LoginPage = () => {
                 )}
               </Button>
 
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleBackToLogin}
-                className="w-full"
-              >
-                Back to Login
-              </Button>
-            </form>
-          </Card>
-        </motion.div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleBackToLogin}
+              className="w-full"
+            >
+              Back to Login
+            </Button>
+          </form>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-2xl"
-      >
-        <Card className="p-8 shadow-2xl">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h1>
-            <p className="text-gray-600">Please sign in to your account</p>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
+      <Card className="w-full max-w-md p-6 sm:p-8 border-0 shadow-xl">
+        {/* Logo & Header */}
+        <div className="text-center mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+            Welcome Back
+          </h1>
+          <p className="text-sm text-gray-600">
+            Sign in to continue your learning journey
+          </p>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleLoginSubmit(onLoginSubmit)} className="space-y-4">
+          {/* Email Field */}
+          <div>
+            <label htmlFor="email" className="text-sm font-medium mb-2 block">
+              Email
+            </label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+              <input
+                {...registerLogin('email')}
+                type="email"
+                id="email"
+                placeholder="you@example.com"
+                className={`w-full h-11 pl-10 pr-4 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-colors ${
+                  loginErrors.email ? 'border-red-500' : 'border-gray-300'
+                }`}
+              />
+            </div>
+            {loginErrors.email && (
+              <p className="mt-1 text-xs sm:text-sm text-red-600">{loginErrors.email.message}</p>
+            )}
           </div>
 
-          <form onSubmit={handleLoginSubmit(onLoginSubmit)} className="space-y-6">
-            {/* Email & Password - stacked */}
-            <div className="grid grid-cols-1 gap-6">
-              {/* Email Field */}
-              <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email Address
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-                <input
-                  {...registerLogin('email')}
-                  type="email"
-                  id="email"
-                  placeholder="Enter your email"
-                  className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                    loginErrors.email ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                />
-              </div>
-              {loginErrors.email && (
-                <p className="mt-1 text-sm text-red-600">{loginErrors.email.message}</p>
-              )}
-              </div>
-
-              {/* Password Field */}
-              <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-                <input
-                  {...registerLogin('password')}
-                  type={showPassword ? 'text' : 'password'}
-                  id="password"
-                  placeholder="Enter your password"
-                  className={`w-full pl-10 pr-12 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                    loginErrors.password ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                </button>
-              </div>
-              {loginErrors.password && (
-                <p className="mt-1 text-sm text-red-600">{loginErrors.password.message}</p>
-              )}
-              </div>
-            </div>
-
-            {/* Remember Me & Forgot Password */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <input
-                  {...registerLogin('remember_me')}
-                  type="checkbox"
-                  id="remember_me"
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <label htmlFor="remember_me" className="ml-2 block text-sm text-gray-700">
-                  Remember me
-                </label>
-              </div>
-              <Link
-                href="/forgot-password"
-                className="text-sm text-blue-600 hover:text-blue-500"
-              >
-                Forgot password?
-              </Link>
-            </div>
-
-            {/* Submit Button */}
-            <Button
-              type="submit"
-              disabled={isLoginLoading}
-              className="w-full"
-            >
-              {isLoginLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
-                </>
-              ) : (
-                'Sign In'
-              )}
-            </Button>
-
-            {/* Forgot Password Link */}
-            <div className="text-center">
-              <Link href="/forgot-password" className="text-blue-600 hover:text-blue-700 text-sm font-medium">
-                Forgot your password?
-              </Link>
-            </div>
-
-            {/* Divider */}
+          {/* Password Field */}
+          <div>
+            <label htmlFor="password" className="text-sm font-medium mb-2 block">
+              Password
+            </label>
             <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">Don't have an account?</span>
-              </div>
+              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+              <input
+                {...registerLogin('password')}
+                type={showPassword ? 'text' : 'password'}
+                id="password"
+                placeholder="••••••••"
+                className={`w-full h-11 pl-10 pr-12 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-colors ${
+                  loginErrors.password ? 'border-red-500' : 'border-gray-300'
+                }`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 touch-manipulation"
+              >
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </button>
             </div>
+            {loginErrors.password && (
+              <p className="mt-1 text-xs sm:text-sm text-red-600">{loginErrors.password.message}</p>
+            )}
+          </div>
 
-            {/* Sign Up Link */}
-            <Link href="/register">
-              <Button variant="outline" className="w-full">
-                Create Account
-              </Button>
+          {/* Remember Me & Forgot Password */}
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center">
+              <input
+                {...registerLogin('remember_me')}
+                type="checkbox"
+                id="remember_me"
+                className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
+              />
+              <label htmlFor="remember_me" className="ml-2 text-gray-700">
+                Remember me
+              </label>
+            </div>
+            <Link
+              href="/forgot-password"
+              className="text-primary hover:text-primary/80 font-medium"
+            >
+              Forgot password?
             </Link>
+          </div>
 
-            {/* Future: Social Login Placeholder */}
-            <div className="text-center text-sm text-gray-500">
-              <p>Social login options coming soon</p>
-            </div>
-          </form>
-        </Card>
-      </motion.div>
+          {/* Submit Button */}
+          <Button
+            type="submit"
+            disabled={isLoginLoading}
+            className="w-full h-11"
+          >
+            {isLoginLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Signing in...
+              </>
+            ) : (
+              'Sign In'
+            )}
+          </Button>
+        </form>
+
+        {/* Footer Links */}
+        <div className="mt-6 text-center">
+          <p className="text-sm text-gray-600">
+            Don't have an account?{' '}
+            <Link href="/register" className="text-primary hover:text-primary/80 font-medium">
+              Sign up
+            </Link>
+          </p>
+        </div>
+      </Card>
     </div>
   );
 };

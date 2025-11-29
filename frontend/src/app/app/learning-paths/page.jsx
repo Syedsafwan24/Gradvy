@@ -7,9 +7,11 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Sparkles } from 'lucide-react';
 import { useGetMyLearningPathsQuery } from '@/store/api/learningPathsApi';
 import LearningPathsList from '@/components/learning-paths/LearningPathsList';
-import GenerateLearningPathButton from '@/components/learning-paths/GenerateLearningPathButton';
+import PageLayout from '@/components/layouts/PageLayout';
+import { Button } from '@/components/ui/button';
 
 export default function LearningPathsPage() {
   const router = useRouter();
@@ -26,48 +28,44 @@ export default function LearningPathsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-              My Learning Paths
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              Track your personalized learning journey powered by AI
-            </p>
-          </div>
-
-          <GenerateLearningPathButton onClick={handleGenerateNew} />
-        </div>
-
-        {/* View Tabs */}
-        <div className="flex gap-2 mb-6 border-b border-gray-200 dark:border-gray-700">
-          {['active', 'all', 'completed'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setView(tab)}
-              className={`px-4 py-2 font-medium transition-colors ${
-                view === tab
-                  ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </button>
-          ))}
-        </div>
-
-        {/* Learning Paths List */}
-        <LearningPathsList
-          data={data}
-          isLoading={isLoading}
-          error={error}
-          view={view}
-          onViewPath={handleViewPath}
-        />
+    <PageLayout
+      title="My Learning Paths"
+      description="Track your personalized learning journey powered by AI"
+      actions={
+        <Button 
+          onClick={handleGenerateNew} 
+          className="h-11 gap-2"
+        >
+          <Sparkles className="w-4 h-4" />
+          Generate New Path
+        </Button>
+      }
+    >
+      {/* View Tabs */}
+      <div className="flex gap-2 mb-6 border-b border-gray-200 dark:border-gray-700">
+        {['active', 'all', 'completed'].map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setView(tab)}
+            className={`px-4 py-2 text-sm font-medium transition-colors rounded-t-md ${
+              view === tab
+                ? 'text-primary-600 dark:text-primary-400 border-b-2 border-primary-600 dark:border-primary-400'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+          </button>
+        ))}
       </div>
-    </div>
+
+      {/* Learning Paths List */}
+      <LearningPathsList
+        data={data}
+        isLoading={isLoading}
+        error={error}
+        view={view}
+        onViewPath={handleViewPath}
+      />
+    </PageLayout>
   );
 }

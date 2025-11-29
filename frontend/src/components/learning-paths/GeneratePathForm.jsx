@@ -112,13 +112,24 @@ export default function GeneratePathForm({ onSuccess }) {
 
       const response = await generatePath(payload).unwrap();
 
-      // Extract path_id from response
-      const pathId = response?.path_id;
+      // Debug: Log the full response structure
+      console.log('✅ Learning path generated successfully:', response);
+
+      // Extract path_id from nested learning_path structure
+      const pathId = response?.learning_path?.path_id || response?.path_id;
+
       if (pathId && onSuccess) {
+        console.log('🔀 Redirecting to learning path:', pathId);
         onSuccess(pathId);
+      } else {
+        console.error('❌ No path_id found in response:', response);
+        // Show error to user if path_id is missing
+        throw new Error('Generated path is missing path_id. Please try again.');
       }
     } catch (err) {
-      console.error('Failed to generate learning path:', err);
+      console.error('❌ Failed to generate learning path:', err);
+      // Re-throw to let RTK Query handle the error state
+      throw err;
     }
   };
 

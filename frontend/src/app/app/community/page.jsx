@@ -1,43 +1,29 @@
 'use client';
 
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
 import { 
   Users, 
   MessageSquare, 
-  Heart,
-  Share2,
-  Search,
-  Filter,
   Plus,
   TrendingUp,
-  Calendar,
   Award,
-  BookOpen,
-  Code,
   HelpCircle,
   Lightbulb,
   Star,
   Eye,
   MessageCircle,
-  ChevronRight,
-  User,
-  Clock,
-  Pin,
-  Flag,
   ThumbsUp,
-  Hash,
-  Bell
+  Search,
+  Flag
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Textarea } from '@/components/ui/textarea';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import PageLayout from '@/components/layouts/PageLayout';
 
 const CommunityPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -231,77 +217,59 @@ const CommunityPage = () => {
   };
 
   const DiscussionCard = ({ discussion }) => {
-    const CategoryIcon = getCategoryIcon(discussion.category);
-    
     return (
-      <Card className="p-6 hover:shadow-md transition-all duration-200">
-        <div className="flex items-start space-x-4">
-          <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="text-sm font-medium">{discussion.author.name.charAt(0)}</span>
-          </div>
+      <Card className="p-4 border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
+        <div className="flex gap-3">
+          <Avatar className="w-10 h-10 shrink-0">
+            <AvatarFallback className="text-sm">
+              {discussion.author.name.charAt(0)}
+            </AvatarFallback>
+          </Avatar>
           
           <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center space-x-2">
-                {discussion.isPinned && (
-                  <Pin className="h-4 w-4 text-green-600" />
-                )}
-                <Badge className={getCategoryColor(discussion.category)}>
-                  <CategoryIcon className="h-3 w-3 mr-1" />
-                  {categories.find(c => c.id === discussion.category)?.name}
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              {discussion.isAnswered && (
+                <Badge variant="success" className="text-xs">
+                  Answered
                 </Badge>
-                {discussion.isAnswered && (
-                  <Badge className="bg-green-100 text-green-700">
-                    <ThumbsUp className="h-3 w-3 mr-1" />
-                    Answered
-                  </Badge>
-                )}
-              </div>
+              )}
+              <Badge 
+                variant={discussion.category === 'help' ? 'default' : 
+                        discussion.category === 'showcase' ? 'purple' : 
+                        discussion.category === 'resources' ? 'success' : 'secondary'}
+                className="text-xs"
+              >
+                {categories.find(c => c.id === discussion.category)?.name}
+              </Badge>
             </div>
             
-            <h3 className="font-semibold text-lg mb-2 hover:text-blue-600 cursor-pointer">
+            <h3 className="text-base sm:text-lg font-semibold mb-2 line-clamp-2 hover:text-primary">
               {discussion.title}
             </h3>
             
-            <p className="text-gray-600 text-sm mb-3 line-clamp-2">
+            <p className="text-sm text-gray-600 mb-3 line-clamp-2">
               {discussion.content}
             </p>
             
-            <div className="flex flex-wrap gap-1 mb-3">
-              {discussion.tags.map(tag => (
-                <Badge key={tag} variant="outline" className="text-xs">
-                  <Hash className="h-2 w-2 mr-1" />
-                  {tag}
-                </Badge>
-              ))}
-            </div>
-            
-            <div className="flex items-center justify-between text-sm text-gray-500">
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-1">
-                  <span className="font-medium">{discussion.author.name}</span>
-                  <Badge variant="secondary" className="text-xs">
-                    {discussion.author.badge}
-                  </Badge>
-                </div>
-                <span className="flex items-center space-x-1">
-                  <Clock className="h-3 w-3" />
-                  <span>{discussion.createdAt}</span>
-                </span>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <span className="font-medium truncate">{discussion.author.name}</span>
+                <span>•</span>
+                <span>{discussion.createdAt}</span>
               </div>
               
-              <div className="flex items-center space-x-4">
-                <span className="flex items-center space-x-1">
+              <div className="flex items-center gap-3 sm:gap-4 text-xs text-gray-500">
+                <span className="flex items-center gap-1">
                   <MessageCircle className="h-3 w-3" />
-                  <span>{discussion.replies}</span>
+                  {discussion.replies}
                 </span>
-                <span className="flex items-center space-x-1">
-                  <Heart className="h-3 w-3" />
-                  <span>{discussion.likes}</span>
+                <span className="flex items-center gap-1">
+                  <ThumbsUp className="h-3 w-3" />
+                  {discussion.likes}
                 </span>
-                <span className="flex items-center space-x-1">
+                <span className="flex items-center gap-1">
                   <Eye className="h-3 w-3" />
-                  <span>{discussion.views}</span>
+                  {discussion.views}
                 </span>
               </div>
             </div>
@@ -320,92 +288,66 @@ const CommunityPage = () => {
 
   return (
     <ProtectedRoute>
-      <div className="space-y-6">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col lg:flex-row lg:items-center justify-between space-y-4 lg:space-y-0"
-        >
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Community</h1>
-            <p className="text-gray-600">
-              Connect, learn, and grow together with fellow developers
-            </p>
-          </div>
-          
-          <div className="flex items-center space-x-3">
-            <Button variant="outline">
-              <Bell className="h-4 w-4 mr-2" />
-              Notifications
-            </Button>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              New Discussion
-            </Button>
-          </div>
-        </motion.div>
-
+      <PageLayout
+        title="Community"
+        description={`${communityStats.totalMembers.toLocaleString()} members • ${communityStats.onlineMembers} online`}
+        actions={
+          <Button className="w-full sm:w-auto">
+            <Plus className="h-4 w-4 mr-2" />
+            New Discussion
+          </Button>
+        }
+      >
         {/* Community Stats */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="grid grid-cols-2 md:grid-cols-5 gap-4"
-        >
-          <Card className="p-4 text-center">
-            <Users className="h-8 w-8 text-blue-500 mx-auto mb-2" />
-            <div className="text-2xl font-bold text-gray-900">{communityStats.totalMembers.toLocaleString()}</div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <Card className="p-3 sm:p-4 text-center border border-gray-200 hover:shadow-md transition-shadow">
+            <Users className="h-6 w-6 sm:h-8 sm:w-8 text-primary mx-auto mb-2" />
+            <div className="text-lg sm:text-2xl font-bold text-gray-900">{communityStats.totalMembers.toLocaleString()}</div>
             <div className="text-xs text-gray-600">Members</div>
           </Card>
           
-          <Card className="p-4 text-center">
-            <div className="relative">
-              <Users className="h-8 w-8 text-green-500 mx-auto mb-2" />
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full"></div>
+          <Card className="p-3 sm:p-4 text-center border border-gray-200 hover:shadow-md transition-shadow">
+            <div className="relative inline-block">
+              <Users className="h-6 w-6 sm:h-8 sm:w-8 text-success mx-auto mb-2" />
+              <div className="absolute -top-1 -right-1 w-2 h-2 sm:w-3 sm:h-3 bg-success rounded-full"></div>
             </div>
-            <div className="text-2xl font-bold text-gray-900">{communityStats.onlineMembers}</div>
-            <div className="text-xs text-gray-600">Online Now</div>
+            <div className="text-lg sm:text-2xl font-bold text-gray-900">{communityStats.onlineMembers}</div>
+            <div className="text-xs text-gray-600">Online</div>
           </Card>
           
-          <Card className="p-4 text-center">
-            <MessageSquare className="h-8 w-8 text-purple-500 mx-auto mb-2" />
-            <div className="text-2xl font-bold text-gray-900">{communityStats.totalPosts.toLocaleString()}</div>
-            <div className="text-xs text-gray-600">Discussions</div>
+          <Card className="p-3 sm:p-4 text-center border border-gray-200 hover:shadow-md transition-shadow">
+            <MessageSquare className="h-6 w-6 sm:h-8 sm:w-8 text-purple-500 mx-auto mb-2" />
+            <div className="text-lg sm:text-2xl font-bold text-gray-900">{communityStats.totalPosts.toLocaleString()}</div>
+            <div className="text-xs text-gray-600">Posts</div>
           </Card>
           
-          <Card className="p-4 text-center">
-            <ThumbsUp className="h-8 w-8 text-orange-500 mx-auto mb-2" />
-            <div className="text-2xl font-bold text-gray-900">{communityStats.totalAnswered.toLocaleString()}</div>
+          <Card className="p-3 sm:p-4 text-center border border-gray-200 hover:shadow-md transition-shadow">
+            <ThumbsUp className="h-6 w-6 sm:h-8 sm:w-8 text-warning mx-auto mb-2" />
+            <div className="text-lg sm:text-2xl font-bold text-gray-900">{communityStats.totalAnswered.toLocaleString()}</div>
             <div className="text-xs text-gray-600">Answered</div>
           </Card>
           
-          <Card className="p-4 text-center">
-            <Star className="h-8 w-8 text-yellow-500 mx-auto mb-2" />
-            <div className="text-2xl font-bold text-gray-900">{communityStats.helpfulAnswers.toLocaleString()}</div>
+          <Card className="p-3 sm:p-4 text-center border border-gray-200 hover:shadow-md transition-shadow">
+            <Star className="h-6 w-6 sm:h-8 sm:w-8 text-yellow-500 mx-auto mb-2" />
+            <div className="text-lg sm:text-2xl font-bold text-gray-900">{communityStats.helpfulAnswers.toLocaleString()}</div>
             <div className="text-xs text-gray-600">Helpful</div>
           </Card>
-        </motion.div>
+        </div>
 
         {/* Search and Filters */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="flex flex-col lg:flex-row gap-4"
-        >
+        <div className="flex flex-col sm:flex-row gap-3 mb-6 sm:mb-8">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
-              placeholder="Search discussions, tags, or members..."
+              placeholder="Search discussions..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
+              className="pl-10 h-11"
             />
           </div>
           
           <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-            <SelectTrigger className="lg:w-48">
+            <SelectTrigger className="w-full sm:w-[180px] h-11">
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
@@ -418,7 +360,7 @@ const CommunityPage = () => {
           </Select>
 
           <Select value={sortBy} onValueChange={setSortBy}>
-            <SelectTrigger className="lg:w-48">
+            <SelectTrigger className="w-full sm:w-[180px] h-11">
               <SelectValue placeholder="Sort by" />
             </SelectTrigger>
             <SelectContent>
@@ -428,159 +370,108 @@ const CommunityPage = () => {
               <SelectItem value="trending">Trending</SelectItem>
             </SelectContent>
           </Select>
-        </motion.div>
+        </div>
 
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Discussions */}
           <div className="lg:col-span-2 space-y-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold">
-                  {selectedCategory === 'all' ? 'All Discussions' : 
-                   categories.find(c => c.id === selectedCategory)?.name}
-                </h2>
-                <span className="text-sm text-gray-600">
-                  {filteredDiscussions.length} discussions
-                </span>
-              </div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base sm:text-lg font-semibold">
+                {selectedCategory === 'all' ? 'All Discussions' : 
+                 categories.find(c => c.id === selectedCategory)?.name}
+              </h2>
+              <span className="text-xs sm:text-sm text-gray-600">
+                {filteredDiscussions.length} discussions
+              </span>
+            </div>
 
-              {filteredDiscussions.length === 0 ? (
-                <Card className="p-12 text-center">
-                  <MessageSquare className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">No discussions found</h3>
-                  <p className="text-gray-600 mb-6">
-                    {searchTerm ? "Try adjusting your search criteria." : "Be the first to start a discussion!"}
-                  </p>
-                  <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Start Discussion
-                  </Button>
-                </Card>
-              ) : (
-                <div className="space-y-4">
-                  {filteredDiscussions.map(discussion => (
-                    <DiscussionCard key={discussion.id} discussion={discussion} />
-                  ))}
-                </div>
-              )}
-            </motion.div>
+            {filteredDiscussions.length === 0 ? (
+              <Card className="p-8 sm:p-12 text-center">
+                <MessageSquare className="h-12 w-12 sm:h-16 sm:w-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">No discussions found</h3>
+                <p className="text-sm text-gray-600 mb-6">
+                  {searchTerm ? "Try adjusting your search criteria." : "Be the first to start a discussion!"}
+                </p>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Start Discussion
+                </Button>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {filteredDiscussions.map(discussion => (
+                  <DiscussionCard key={discussion.id} discussion={discussion} />
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Quick Post */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.4 }}
-            >
-              <Card className="p-6">
-                <h3 className="font-semibold mb-4">Quick Post</h3>
-                <Textarea 
-                  placeholder="What's on your mind? Ask a question or share something..."
-                  className="mb-3"
-                />
-                <Button className="w-full">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Post Discussion
-                </Button>
-              </Card>
-            </motion.div>
-
+          <div className="space-y-4 sm:space-y-6">
             {/* Active Members */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.5 }}
-            >
-              <Card className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold">Active Members</h3>
-                  <Badge variant="secondary">{activeMembers.length} online</Badge>
-                </div>
-                <div className="space-y-3">
-                  {activeMembers.map(member => (
-                    <div key={member.id} className="flex items-center space-x-3">
-                      <div className="relative">
-                        <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-                          <span className="text-xs font-medium">{member.name.charAt(0)}</span>
-                        </div>
-                        <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
-                          member.status === 'online' ? 'bg-green-500' : 'bg-yellow-500'
-                        }`}></div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{member.name}</p>
-                        <p className="text-xs text-gray-500">{member.badge}</p>
-                      </div>
-                      <div className="text-xs text-gray-400">
-                        {member.contributions}
-                      </div>
+            <Card className="p-4 sm:p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm sm:text-base font-semibold">Active Members</h3>
+                <Badge variant="success" className="text-xs">{activeMembers.length} online</Badge>
+              </div>
+              <div className="space-y-3">
+                {activeMembers.slice(0, 5).map(member => (
+                  <div key={member.id} className="flex items-center gap-3">
+                    <Avatar className="w-8 h-8">
+                      <AvatarFallback className="text-xs">{member.name.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{member.name}</p>
+                      <p className="text-xs text-gray-500">{member.badge}</p>
                     </div>
-                  ))}
-                </div>
-                <Button variant="outline" size="sm" className="w-full mt-4">
-                  View All Members
-                </Button>
-              </Card>
-            </motion.div>
+                    <div className="text-xs text-gray-400">
+                      {member.contributions}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Button variant="outline" className="w-full mt-4 h-9 text-sm">
+                View All
+              </Button>
+            </Card>
 
             {/* Trending Tags */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.6 }}
-            >
-              <Card className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold">Trending Tags</h3>
-                  <TrendingUp className="h-4 w-4 text-green-500" />
-                </div>
-                <div className="space-y-2">
-                  {trendingTags.map(tag => (
-                    <div key={tag.name} className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <Hash className="h-3 w-3 text-gray-400" />
-                        <span className="text-sm font-medium">{tag.name}</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <span className="text-xs text-gray-500">{tag.count}</span>
-                        <span className="text-xs text-green-600">{tag.trend}</span>
-                      </div>
+            <Card className="p-4 sm:p-6 hidden sm:block">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm sm:text-base font-semibold">Trending Tags</h3>
+                <TrendingUp className="h-4 w-4 text-success" />
+              </div>
+              <div className="space-y-2">
+                {trendingTags.map(tag => (
+                  <div key={tag.name} className="flex items-center justify-between">
+                    <span className="text-sm font-medium">#{tag.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">{tag.count}</span>
+                      <span className="text-xs text-success font-medium">{tag.trend}</span>
                     </div>
-                  ))}
-                </div>
-              </Card>
-            </motion.div>
+                  </div>
+                ))}
+              </div>
+            </Card>
 
             {/* Community Guidelines */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.7 }}
-            >
-              <Card className="p-6 bg-blue-50 border-blue-200">
-                <h3 className="font-semibold mb-3 text-blue-900">Community Guidelines</h3>
-                <ul className="text-sm text-blue-800 space-y-1">
-                  <li>• Be respectful and professional</li>
-                  <li>• Search before posting duplicates</li>
-                  <li>• Use clear, descriptive titles</li>
-                  <li>• Share code snippets when helpful</li>
-                  <li>• Give credit where due</li>
-                </ul>
-                <Button variant="outline" size="sm" className="w-full mt-4">
-                  Read Full Guidelines
-                </Button>
-              </Card>
-            </motion.div>
+            <Card className="p-4 sm:p-6 bg-primary/5 border-primary/20 hidden lg:block">
+              <h3 className="text-sm font-semibold mb-3 text-primary">Community Guidelines</h3>
+              <ul className="text-xs sm:text-sm text-gray-700 space-y-1">
+                <li>• Be respectful and professional</li>
+                <li>• Search before posting duplicates</li>
+                <li>• Use clear, descriptive titles</li>
+                <li>• Share code snippets when helpful</li>
+                <li>• Give credit where due</li>
+              </ul>
+              <Button variant="outline" className="w-full mt-4 h-9 text-sm">
+                Read Guidelines
+              </Button>
+            </Card>
           </div>
         </div>
-      </div>
+      </PageLayout>
     </ProtectedRoute>
   );
 };
