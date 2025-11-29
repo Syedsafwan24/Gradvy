@@ -1,0 +1,11 @@
+# Gradvy ML CPU-Only Dependencies
+# For team members without NVIDIA GPUs
+#
+# This is an alias to requirements-ml-base.txt for clarity
+# Use this file if you don't have an NVIDIA GPU
+
+-r requirements-ml-base.txt
+
+# Note: Models will run in float16 mode without quantization
+# Performance will be slower than GPU, but fully functional
+# Recommended for development and testing on laptops

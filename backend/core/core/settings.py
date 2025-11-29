@@ -16,6 +16,25 @@ SECRET_KEY = config('DJANGO_SECRET_KEY', default='your-secret-key-here')
 DEBUG = config('DJANGO_DEBUG', default=True, cast=bool)
 ALLOWED_HOSTS = [h.strip() for h in str(config('DJANGO_ALLOWED_HOSTS', default='localhost,127.0.0.1,testserver')).split(',') if h.strip()]
 
+# ML Services Configuration
+ML_MOCK_MODE = config('ML_MOCK_MODE', default=False, cast=bool)
+
+# ML API Configuration (for external AI APIs)
+ML_API_PROVIDER = config('ML_API_PROVIDER', default='mock')  # 'openai', 'groq', 'together', 'mock'
+ML_API_KEY = config('ML_API_KEY', default='')
+ML_API_BASE_URL = config('ML_API_BASE_URL', default='https://api.groq.com/openai/v1')
+ML_API_MODEL = config('ML_API_MODEL', default='llama3-70b-8192')  # Groq's Llama 3 70B model
+
+# Course Search API Configuration (YouTube, Udemy)
+YOUTUBE_API_KEY = config('YOUTUBE_API_KEY', default='')
+UDEMY_CLIENT_ID = config('UDEMY_CLIENT_ID', default='')
+UDEMY_CLIENT_SECRET = config('UDEMY_CLIENT_SECRET', default='')
+UDEMY_AFFILIATE_ID = config('UDEMY_AFFILIATE_ID', default='')
+
+# Course search behavior
+USE_MOCK_COURSES = config('USE_MOCK_COURSES', default=True, cast=bool)  # Enable mock for development
+REQUIRE_REAL_COURSES = config('REQUIRE_REAL_COURSES', default=False, cast=bool)  # Fail if no APIs in production
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -98,6 +117,10 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.middleware.CookieConsentMiddleware',  # Cookie consent tracking
+    # DISABLED: Internal API logging (use browser console instead)
+    # External API calls (YouTube, Groq, roadmap.sh, Udemy, OAuth) are logged via decorators
+    # See: ml_services/utils/external_api_logger.py and logs/external_apis.log
+    # 'core.middleware.APIRequestResponseLoggingMiddleware',
 ]
 
 ROOT_URLCONF = 'core.urls'
@@ -126,8 +149,8 @@ CSRF_COOKIE_NAME = 'gradvy_csrftoken'     # Custom CSRF cookie name
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
+    "http://localhost:8030",  # Backend port
+    "http://127.0.0.1:8030",  # Backend port
 ]
 if not DEBUG:
     CSRF_TRUSTED_ORIGINS.extend([
@@ -253,7 +276,7 @@ else:
             'USER': config('DB_USER', default='gradvy_user'),
             'PASSWORD': config('DB_PASSWORD', default='gradvy_secure_2024'),
             'HOST': config('DB_HOST', default='localhost'),
-            'PORT': config('DB_PORT', default='5433'),
+            'PORT': config('DB_PORT', default='5434'),
         }
     }
 
@@ -277,6 +300,16 @@ try:
 except Exception as e:
     # Log connection error but don't fail startup
     print(f"MongoDB connection warning: {e}")
+
+# =============================================================================
+# Learning Path Generation Settings
+# =============================================================================
+# Configurable bounds for dynamic module and lesson count calculation
+# These can be overridden via environment variables for fine-tuning
+LEARNING_PATH_MIN_MODULES = config('LEARNING_PATH_MIN_MODULES', default=4, cast=int)
+LEARNING_PATH_MAX_MODULES = config('LEARNING_PATH_MAX_MODULES', default=20, cast=int)
+LEARNING_PATH_MIN_LESSONS = config('LEARNING_PATH_MIN_LESSONS', default=2, cast=int)
+LEARNING_PATH_MAX_LESSONS = config('LEARNING_PATH_MAX_LESSONS', default=10, cast=int)
 
 # Email configuration
 # Default to console backend for local development. Provide SMTP settings via env for production.
@@ -332,4 +365,76 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 import sys
 sys.path.insert(0, os.path.join(BASE_DIR, 'apps'))
 sys.path.insert(0, BASE_DIR.parent)  # Add backend root directory for ml_services # type:ignore
+
+# Logging Configuration - Enable DEBUG logging for ml_services and API
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'api_verbose': {
+            'format': '{levelname} {asctime} [{module}] {message}',
+            'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+        'external_api': {
+            'format': '{levelname} {asctime} [EXTERNAL API] {message}',
+            'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'api_file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'api_requests.log'),
+            'maxBytes': 10485760,  # 10MB
+            'backupCount': 5,
+            'formatter': 'api_verbose',
+        },
+        'external_api_file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'external_apis.log'),
+            'maxBytes': 10485760,  # 10MB
+            'backupCount': 10,  # Keep more backups for external API logs
+            'formatter': 'external_api',
+        },
+    },
+    'loggers': {
+        'external_api': {
+            'handlers': ['console', 'external_api_file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'api': {
+            'handlers': ['console', 'api_file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'ml_services': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+}
 

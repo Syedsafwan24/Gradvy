@@ -10,6 +10,7 @@ urlpatterns = [
     path('api/auth/', include('apps.auth.api.urls')),
     path('api/auth/social/', include('apps.auth.social_urls')),
     path('api/preferences/', include('apps.preferences.urls')),
+    path('api/learning-paths/', include('apps.learning_content.api.urls')),
 ]
 
 if settings.DEBUG:

@@ -7,7 +7,8 @@ import * as yup from 'yup';
 import { Save, User, Mail, Phone, Globe, Bell, Moon, Sun } from 'lucide-react';
 import { useUpdateProfileMutation } from '@/store/api/authApi';
 import { Button } from '@/components/ui/button';
-import { normalizeApiError } from '@/utils/apiErrors';
+import { normalizeApiError, applyFieldErrorsToForm } from '@/utils/apiErrors';
+import { normalizePhone } from '@/utils/phoneUtils';
 import toast from 'react-hot-toast';
 
 const generalSettingsSchema = yup.object({
@@ -30,6 +31,7 @@ const GeneralSettings = ({ user }) => {
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors, isDirty }
   } = useForm({
     resolver: yupResolver(generalSettingsSchema),
@@ -45,11 +47,12 @@ const GeneralSettings = ({ user }) => {
   const onSubmit = async (data) => {
     try {
       // Transform data to match backend API expectations
+      // Normalize phone number to ensure consistent format (e.g., +1234567890)
       const profileData = {
         first_name: data.first_name,
         last_name: data.last_name,
         email: data.email,
-        phone: data.phone || '',
+        phone: normalizePhone(data.phone || ''),
         bio: data.bio || '',
       };
 
@@ -57,7 +60,16 @@ const GeneralSettings = ({ user }) => {
       toast.success('Profile updated successfully!');
     } catch (error) {
       console.error('Profile update failed:', error);
+
+      // Normalize API error and apply field-specific errors to form
       const normalizedError = normalizeApiError(error);
+
+      // Apply field errors to form inputs so they show up next to each field
+      if (normalizedError.fieldErrors && Object.keys(normalizedError.fieldErrors).length > 0) {
+        applyFieldErrorsToForm(normalizedError, setError);
+      }
+
+      // Show general error message in toast
       toast.error(normalizedError.message || 'Failed to update profile. Please try again.');
     }
   };

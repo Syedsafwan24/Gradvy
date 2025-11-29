@@ -65,11 +65,19 @@ class UserProfileSerializer(serializers.ModelSerializer):
     
     def validate_phone(self, value):
         if value and len(value) > 0:
-            # Basic phone number validation
+            # Phone number validation - accepts multiple formats
+            # Strips spaces, hyphens, and parentheses before validation
             import re
-            phone_pattern = re.compile(r'^[\+]?[1-9][\d]{0,15}$')
-            if not phone_pattern.match(value.replace(' ', '').replace('-', '')):
-                raise serializers.ValidationError("Enter a valid phone number.")
+            cleaned = value.replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
+
+            # Accept phone numbers with optional + prefix and 7-15 digits
+            # This accepts most international formats including numbers starting with 0
+            phone_pattern = re.compile(r'^[\+]?[\d]{7,15}$')
+
+            if not phone_pattern.match(cleaned):
+                raise serializers.ValidationError(
+                    "Enter a valid phone number. Examples: +1234567890, 1234567890, (123) 456-7890"
+                )
         return value
     
     def validate_first_name(self, value):

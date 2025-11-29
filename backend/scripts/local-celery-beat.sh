@@ -101,5 +101,8 @@ echo ""
 echo "⏹️  Press Ctrl+C to stop the scheduler"
 echo ""
 
-# Start Celery Beat scheduler
+# Start Celery Beat scheduler with explicit Redis broker configuration
+# Export environment variables to ensure Celery uses Redis (not AMQP default)
+CELERY_BROKER_URL=redis://localhost:6380/0 \
+CELERY_RESULT_BACKEND=redis://localhost:6380/0 \
 celery -A core beat --loglevel=info

@@ -12,8 +12,19 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from transformers import (
     AutoTokenizer, AutoModelForCausalLM,
-    BitsAndBytesConfig, GenerationConfig
+    GenerationConfig
 )
+
+# Conditional import for GPU-only quantization support
+# bitsandbytes requires NVIDIA GPU and won't work on CPU-only systems
+try:
+    from transformers import BitsAndBytesConfig
+    QUANTIZATION_AVAILABLE = True
+except ImportError:
+    # bitsandbytes not installed (CPU-only setup)
+    # Quantization will be disabled, models will run in float16
+    BitsAndBytesConfig = None
+    QUANTIZATION_AVAILABLE = False
 import gc
 
 from ..base.model_interface import (
@@ -135,11 +146,18 @@ class TextGenerationModel(BaseMLModel):
 
             self.logger.info(f"Loading model from: {model_path}")
 
-            # Setup quantization if enabled
+            # Setup quantization if enabled, GPU available, AND bitsandbytes installed
             quantization_config = None
-            if self.use_quantization and self.use_gpu:
+            if self.use_quantization and self.use_gpu and QUANTIZATION_AVAILABLE:
                 quantization_config = self._create_quantization_config()
-                self.logger.info(f"Using quantization: {self.quantization_config}")
+                self.logger.info(f"Using {self.quantization_config.get('bits', 4)}-bit quantization")
+            elif self.use_quantization and self.use_gpu and not QUANTIZATION_AVAILABLE:
+                self.logger.warning(
+                    "Quantization requested but bitsandbytes not available. "
+                    "Install GPU dependencies: pip install -r requirements-ml-gpu.txt"
+                )
+            elif self.use_quantization and not self.use_gpu:
+                self.logger.info("Quantization disabled on CPU (running in float16)")
 
             # Load model
             download_config = self.model_config.get('download_config', {})
@@ -160,8 +178,14 @@ class TextGenerationModel(BaseMLModel):
         except Exception as e:
             raise ModelLoadError(self.model_name, f"Failed to load model: {e}")
 
-    def _create_quantization_config(self) -> BitsAndBytesConfig:
-        """Create quantization configuration for memory efficiency."""
+    def _create_quantization_config(self) -> Optional[BitsAndBytesConfig]:
+        """
+        Create quantization configuration for memory efficiency.
+
+        Returns None if bitsandbytes not available (CPU-only setup).
+        """
+        if not QUANTIZATION_AVAILABLE:
+            return None
         bits = self.quantization_config.get('bits', 4)
 
         if bits == 4:

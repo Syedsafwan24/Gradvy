@@ -1,26 +1,27 @@
 // /home/mohammed-azaan-peshmam/Desktop/Gradvy/Project/Gradvy/frontend/src/config/api.js
 // Centralized API configuration to avoid hardcoded URLs
 // Provides environment-based API endpoints for development and production
-// RELEVANT FILES: apiSlice.js, authApi.js, PrivacyQuickLinks.jsx, AuthInitializer.jsx
+// RELEVANT FILES: apiSlice.js, authApi.js, PrivacyQuickLinks.jsx, AuthInitializer.jsx, env.js
 
-// Get the API base URL from environment variables or use defaults
+import { API_URL } from './env';
+
+// Get the API base URL from environment variables
 const getApiBaseUrl = () => {
-  // In production, this would come from environment variables
-  // For now, keeping localhost for development but centralized
+  // Environment variable is validated via env.js using Zod
   if (typeof window !== 'undefined') {
     // Client-side: can access window.location
     const { protocol, hostname } = window.location;
-    
-    // Development detection
+
+    // Development detection - use validated environment variable
     if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('dev')) {
-      return 'http://localhost:8000';
+      return API_URL;  // Changed from hardcoded 'http://localhost:8000'
     }
-    
+
     // Production would use the same domain
     return `${protocol}//${hostname}`;
   } else {
-    // Server-side rendering: use environment variable or default
-    return process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+    // Server-side rendering: use validated environment variable
+    return API_URL;  // Changed from process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
   }
 };
 

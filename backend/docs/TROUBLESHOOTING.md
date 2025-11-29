@@ -335,11 +335,11 @@ python manage.py shell
 
 ```bash
 # Linux/macOS
-sudo lsof -i :8000
+sudo lsof -i :8080
 sudo kill -9 <PID>
 
 # Windows
-netstat -ano | findstr :8000
+netstat -ano | findstr :8080
 taskkill /PID <PID> /F
 ```
 
@@ -351,7 +351,7 @@ python manage.py runserver 8001
 
 # Modify docker-compose.yml for different ports
 ports:
-  - "5433:5432"  # PostgreSQL
+  - "5434:5432"  # PostgreSQL
   - "6380:6379"  # Redis
 ```
 
@@ -369,7 +369,7 @@ ports:
 
 ```bash
 # Check if Django is running
-curl http://localhost:8000/
+curl http://localhost:8080/
 
 # Check if Flower is accessible
 curl http://localhost:5555/
@@ -591,6 +591,285 @@ git pull origin main
 
 # Apply stashed changes
 git stash pop
+```
+
+## 🤖 ML/AI Issues (Optional Features)
+
+### Issue: ML Installation Network Errors
+
+#### Symptoms:
+
+- `ConnectionResetError` during pip install
+- Download timeout for large packages (PyTorch, CUDA libs)
+- "Connection reset by peer" errors
+
+#### Solutions:
+
+**Use PyTorch Official CDN (Most Reliable):**
+
+```bash
+# CPU version
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# GPU version (CUDA 11.8)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+# Then install other ML deps
+pip install transformers sentence-transformers huggingface_hub tokenizers accelerate optimum tqdm
+```
+
+**Increase Timeout and Retries:**
+
+```bash
+pip install -r requirements-ml-base.txt --timeout=1000 --retries=10
+```
+
+**Install Incrementally:**
+
+```bash
+# Install one package at a time
+pip install torch
+pip install transformers
+pip install sentence-transformers
+# ... etc
+```
+
+### Issue: CUDA Not Available After GPU Installation
+
+#### Symptoms:
+
+- `torch.cuda.is_available()` returns `False`
+- Models load on CPU despite GPU installation
+- "CUDA driver version is insufficient"
+
+#### Solutions:
+
+**Check NVIDIA Driver:**
+
+```bash
+nvidia-smi  # Should show GPU info and CUDA version
+```
+
+**Verify PyTorch CUDA Version:**
+
+```bash
+python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA: {torch.version.cuda}'); print(f'Available: {torch.cuda.is_available()}')"
+```
+
+**Reinstall Matching CUDA Version:**
+
+```bash
+# Check your CUDA version from nvidia-smi
+nvidia-smi | grep "CUDA Version"
+
+# Install matching PyTorch
+# For CUDA 11.8
+pip uninstall torch torchvision torchaudio
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+# For CUDA 12.1
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+```
+
+### Issue: bitsandbytes Import Error
+
+#### Symptoms:
+
+- `ImportError: cannot import name 'BitsAndBytesConfig'`
+- Quantization not working
+- Model loading fails with bitsandbytes error
+
+#### Solutions:
+
+**For GPU Systems:**
+
+```bash
+# Install bitsandbytes
+pip install bitsandbytes>=0.39.0
+
+# Verify installation
+python -c "import bitsandbytes; print('OK')"
+```
+
+**For CPU Systems (Expected Behavior):**
+
+This is normal on CPU-only systems. Quantization is disabled automatically.
+
+```bash
+# Install CPU version without bitsandbytes
+pip install -r requirements-ml-base.txt
+
+# Models will run in float16 without quantization
+```
+
+**If bitsandbytes Fails to Install on GPU:**
+
+```bash
+# Install build tools (Ubuntu/Debian)
+sudo apt-get install build-essential
+
+# Reinstall with verbose output
+pip install bitsandbytes>=0.39.0 -v
+```
+
+### Issue: Out of Memory (OOM) Errors
+
+#### Symptoms:
+
+- `RuntimeError: CUDA out of memory`
+- System freeze when loading models
+- "Killed" errors during model loading
+
+#### Solutions:
+
+**For GPU Systems:**
+
+```bash
+# Check GPU memory
+nvidia-smi
+
+# Models automatically use 4-bit quantization
+# Verify quantization is enabled
+python -c "from ml_services.configs.model_configs import MODEL_REGISTRY; print(MODEL_REGISTRY['mistral-7b-instruct']['quantization'])"
+```
+
+**Use Smaller Models:**
+
+```python
+# In development, use smaller models
+# Phi-3-Mini (7 GB) instead of Mistral (13 GB)
+# Configured in deployment profiles
+```
+
+**Increase System Swap (Linux):**
+
+```bash
+# Add 16GB swap
+sudo fallocate -l 16G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+
+# Make permanent
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+**For CPU Systems:**
+
+```bash
+# Close other applications
+# Use smaller models
+# Process one request at a time
+```
+
+### Issue: Model Download Failures
+
+#### Symptoms:
+
+- HuggingFace download timeout
+- "Connection error" when loading models
+- Incomplete model files
+
+#### Solutions:
+
+**Manual Pre-download:**
+
+```bash
+python -c "from transformers import AutoModel; AutoModel.from_pretrained('microsoft/Phi-3-mini-4k-instruct')"
+```
+
+**Check HuggingFace Connection:**
+
+```bash
+curl -I https://huggingface.co
+```
+
+**Use HuggingFace Token (for gated models):**
+
+```bash
+export HF_TOKEN="your_token_here"
+```
+
+**Check Disk Space:**
+
+```bash
+# Models require 10-40 GB
+df -h core/ML_Models/
+```
+
+### Issue: Model Registry Initialization Fails
+
+#### Symptoms:
+
+- Import errors from `ml_services`
+- "Model not found in registry"
+- Registry returns empty list
+
+#### Solutions:
+
+**Verify ML Dependencies Installed:**
+
+```bash
+python test_ml_setup.py
+```
+
+**Check Model Configs:**
+
+```python
+from ml_services.configs.model_configs import MODEL_REGISTRY
+print(list(MODEL_REGISTRY.keys()))
+```
+
+**Reinitialize Registry:**
+
+```python
+from ml_services.utils.model_registry import get_global_registry, shutdown_global_registry
+shutdown_global_registry()
+registry = get_global_registry()
+```
+
+### Issue: Slow ML Inference on CPU
+
+#### Symptoms:
+
+- Inference takes 30+ seconds
+- High CPU usage
+- System becomes unresponsive
+
+#### Expected Behavior:
+
+CPU inference is inherently slower than GPU (5-30 seconds vs 1-5 seconds).
+
+#### Solutions:
+
+**Use Smaller Models:**
+
+```bash
+# Phi-3-Mini (7 GB) is fastest for CPU
+# Configured in development profile
+```
+
+**Reduce Context Length:**
+
+```python
+# In inference requests, use shorter prompts
+# Max 512 tokens instead of 4096
+```
+
+**Consider GPU Cloud Services:**
+
+```bash
+# For production, use GPU-based services:
+# - AWS SageMaker
+# - Google Vertex AI
+# - RunPod, Lambda Labs (cheap GPU rentals)
+```
+
+**Enable Caching:**
+
+```python
+# Cache frequent queries in Redis
+# Store embeddings in MongoDB
 ```
 
 ## 🆘 Nuclear Options (Last Resort)

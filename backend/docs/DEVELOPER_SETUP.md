@@ -349,6 +349,45 @@ You should see containers named:
 
 ---
 
+### Step 9: Install ML Dependencies (Optional)
+
+**What it is**: AI-powered learning path generation, question generation, and code evaluation.
+
+**Who needs it**: Optional for most developers. Required for:
+- Working on AI/ML features
+- Testing learning path generation
+- Code evaluation features
+
+**Quick Install**:
+
+```bash
+# Auto-detect your hardware and install appropriate version
+./scripts/ml-install.sh
+
+# OR manually:
+# CPU-only (no GPU)
+pip install -r requirements-ml-base.txt
+
+# GPU with NVIDIA CUDA
+./scripts/ml-install-gpu.sh
+```
+
+**Verify Installation**:
+
+```bash
+python test_ml_setup.py
+```
+
+**System Requirements**:
+- CPU-only: 8+ GB RAM, 20 GB disk space
+- GPU: NVIDIA GPU with 8+ GB VRAM, 16+ GB RAM, 50 GB disk
+
+**See**: `docs/ML_SETUP.md` for complete installation guide and troubleshooting
+
+**Note**: ML dependencies are ~1-4 GB download. Models (~10-40 GB) download on first use.
+
+---
+
 ## 🚀 Development Workflow
 
 ### Daily Development Routine
@@ -370,8 +409,8 @@ You should see containers named:
 
 2. **Access your application**:
 
-   - **Django API**: http://localhost:8000
-   - **Django Admin**: http://localhost:8000/admin
+   - **Django API**: http://localhost:8080
+   - **Django Admin**: http://localhost:8080/admin
    - **Flower (Task Monitor)**: http://localhost:5555
 
 3. **When you're done**:
@@ -472,10 +511,10 @@ pip install -r requirements.txt
 
    ```bash
    # Windows
-   netstat -ano | findstr :8000
+   netstat -ano | findstr :8080
 
    # Linux/macOS
-   lsof -i :8000
+   lsof -i :8080
    ```
 
 2. Kill the process or use a different port:

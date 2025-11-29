@@ -1,0 +1,42 @@
+# ============================================================================
+# DEPRECATED: Use requirements-ml-base.txt + requirements-ml-gpu.txt instead
+# ============================================================================
+# This file is kept for backward compatibility only
+#
+# RECOMMENDED INSTALLATION:
+#   CPU users:  pip install -r requirements-ml-base.txt
+#   GPU users:  pip install -r requirements-ml-base.txt && pip install -r requirements-ml-gpu.txt
+#   Auto:       ./scripts/ml-install.sh
+#
+# WHY DEPRECATED:
+#   - Installs GPU packages by default (3+ GB CUDA libraries)
+#   - Network timeouts on large downloads
+#   - Breaks on CPU-only systems (bitsandbytes requires GPU)
+#   - Not team-friendly (forces GPU deps on everyone)
+#
+# SEE: docs/ML_SETUP.md for complete installation guide
+# ============================================================================
+#
+# Gradvy ML/AI Dependencies (Optional)
+# System Requirements: 16GB+ RAM, 100GB+ disk space, GPU with 8GB+ VRAM recommended
+# Install with: pip install -r requirements-ml.txt
+# Note: These are OPTIONAL and only needed for AI-powered learning path features
+
+# Core ML Framework
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# HuggingFace Ecosystem for Local Models
+transformers>=4.30.0
+sentence-transformers>=2.2.2
+huggingface_hub>=0.15.1
+tokenizers>=0.13.3
+accelerate>=0.20.0
+
+# Model Optimization & Quantization
+bitsandbytes>=0.39.0  # 4-bit/8-bit quantization
+optimum>=1.8.0        # Model optimization
+
+# Progress bars
+tqdm>=4.65.0

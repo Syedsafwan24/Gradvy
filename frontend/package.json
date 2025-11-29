@@ -46,7 +46,8 @@
 		"redux-persist": "^6.0.0",
 		"tailwind-merge": "^2.5.2",
 		"tailwindcss-animate": "^1.0.7",
-		"yup": "^1.7.0"
+		"yup": "^1.7.0",
+		"zod": "^4.1.13"
 	},
 	"devDependencies": {
 		"@types/node": "^22.5.5",

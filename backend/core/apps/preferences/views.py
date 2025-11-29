@@ -822,6 +822,111 @@ class PersonalizedRecommendationsView(views.APIView):
 
 
 @method_decorator(csrf_exempt, name='dispatch')
+class GenerateRecommendationsView(views.APIView):
+    """
+    Endpoint to explicitly generate new course recommendations.
+    Separate from PersonalizedRecommendationsView for clarity.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """Generate new recommendations based on user preferences"""
+        try:
+            user_preference = UserPreference.get_by_user_id(request.user.id)
+            if not user_preference:
+                return PreferencesAPIResponse.preferences_not_found()
+
+            # Create mock recommendations for testing
+            mock_recommendations = [
+                RecommendationItem(
+                    course_id="test_course_1",
+                    platform="udemy",
+                    title="Mock Course 1",
+                    score=0.95,
+                    reasoning=["matches_learning_goal", "appropriate_difficulty"],
+                    metadata={"duration": "10 hours", "rating": 4.5}
+                ),
+                RecommendationItem(
+                    course_id="test_course_2",
+                    platform="coursera",
+                    title="Mock Course 2",
+                    score=0.87,
+                    reasoning=["popular_choice", "high_rating"],
+                    metadata={"duration": "6 hours", "rating": 4.7}
+                )
+            ]
+
+            # Create or update recommendation document
+            recommendation = CourseRecommendation(
+                user_id=request.user.id,
+                expires_at=datetime.utcnow() + timedelta(hours=24),
+                recommendations=mock_recommendations,
+                algorithm_version="1.0.0-mock"
+            )
+            recommendation.save()
+
+            serializer = CourseRecommendationSerializer(recommendation)
+            return APISuccess.created(
+                data={
+                    'recommendations': serializer.data,
+                    'source': 'generated'
+                },
+                message='Recommendations generated successfully'
+            )
+
+        except Exception as e:
+            logger.error(f"Error generating recommendations for user {request.user.id}: {str(e)}")
+            return handle_exception(
+                exception=e,
+                default_message='Failed to generate recommendations'
+            )
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class RecommendationFeedbackView(views.APIView):
+    """
+    Endpoint to collect feedback on recommendations.
+    Helps improve future recommendations.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """Submit feedback for a recommendation"""
+        try:
+            recommendation_id = request.data.get('recommendation_id')
+            feedback_type = request.data.get('feedback')  # 'helpful' or 'not_helpful'
+
+            if not recommendation_id or not feedback_type:
+                return APIError.bad_request(
+                    message='Missing required fields: recommendation_id and feedback'
+                )
+
+            # Get user's recommendations
+            recommendations = CourseRecommendation.get_valid_recommendations(request.user.id)
+            if not recommendations:
+                return APIError.not_found(
+                    message='No recommendations found'
+                )
+
+            # Add feedback
+            recommendations.add_user_feedback(
+                course_id=recommendation_id,
+                feedback_type=feedback_type
+            )
+
+            return APISuccess.create(
+                message='Feedback recorded successfully'
+            )
+
+        except Exception as e:
+            logger.error(f"Error recording feedback for user {request.user.id}: {str(e)}")
+            return handle_exception(
+                exception=e,
+                default_message='Failed to record feedback'
+            )
+
+
+@method_decorator(csrf_exempt, name='dispatch')
 class PreferenceChoicesView(views.APIView):
     """
     Endpoint to get available choices for preference fields.

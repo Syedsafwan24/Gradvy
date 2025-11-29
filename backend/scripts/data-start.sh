@@ -67,7 +67,7 @@ print_status "Testing individual service connectivity..."
 
 # PostgreSQL check
 if docker exec gradvy-postgres pg_isready -U gradvy_user -d gradvy_db >/dev/null 2>&1; then
-    print_success "✅ PostgreSQL: Ready (localhost:5432)"
+    print_success "✅ PostgreSQL: Ready (localhost:5434)"
     postgres_ready=true
 else
     print_warning "⚠️  PostgreSQL: Still starting up..."
@@ -106,7 +106,7 @@ if [ "$postgres_ready" = true ] && [ "$redis_ready" = true ] && [ "$mongodb_read
     print_success "All data services are running and healthy! 🎉"
     echo ""
     echo "🗄️  Database Services:"
-    echo "   ✅ PostgreSQL (Django): localhost:5432"
+    echo "   ✅ PostgreSQL (Django): localhost:5434"
     echo "   ✅ Redis (Celery):      localhost:6380"
     echo "   ✅ MongoDB (Preferences): localhost:27017"
     echo ""

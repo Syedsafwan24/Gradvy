@@ -16,6 +16,9 @@ from django.core.cache import cache
 
 from .social_models import SocialProvider, SocialAccount, SocialAuthEvent, SocialProfileEnrichment
 
+# Import external API logger for tracking OAuth API calls
+from ml_services.utils.external_api_logger import log_external_api_call
+
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
@@ -104,10 +107,16 @@ class GoogleOAuthHandler(OAuthHandler):
         super().__init__('google')
         self.people_api_url = 'https://people.googleapis.com/v1/people/me'
     
+    @log_external_api_call(
+        api_name="Google People API",
+        sanitize_auth=True,  # CRITICAL: Never log full OAuth tokens
+        include_headers=False,
+        truncate_response_at=2000
+    )
     def get_enhanced_profile(self, access_token: str) -> Dict[str, Any]:
         """Fetch enhanced profile data from Google People API"""
         headers = {'Authorization': f'Bearer {access_token}'}
-        
+
         # Request comprehensive person data
         params = {
             'personFields': 'names,emailAddresses,phoneNumbers,addresses,photos,'
@@ -195,6 +204,12 @@ class GitHubOAuthHandler(OAuthHandler):
         super().__init__('github')
         self.api_base = 'https://api.github.com'
     
+    @log_external_api_call(
+        api_name="GitHub API",
+        sanitize_auth=True,  # CRITICAL: Never log full OAuth tokens
+        include_headers=False,
+        truncate_response_at=2000
+    )
     def get_enhanced_profile(self, access_token: str) -> Dict[str, Any]:
         """Fetch enhanced profile data from GitHub API"""
         headers = {
@@ -285,6 +300,12 @@ class LinkedInOAuthHandler(OAuthHandler):
         super().__init__('linkedin')
         self.api_base = 'https://api.linkedin.com/v2'
     
+    @log_external_api_call(
+        api_name="LinkedIn API",
+        sanitize_auth=True,  # CRITICAL: Never log full OAuth tokens
+        include_headers=False,
+        truncate_response_at=2000
+    )
     def get_enhanced_profile(self, access_token: str) -> Dict[str, Any]:
         """Fetch enhanced profile data from LinkedIn API"""
         headers = {

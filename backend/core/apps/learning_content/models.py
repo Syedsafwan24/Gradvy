@@ -41,6 +41,14 @@ class ContentPreferences(EmbeddedDocument):
     DURATION_CHOICES = ['short', 'medium', 'long', 'mixed']
     duration_preference = StringField(choices=DURATION_CHOICES, default='mixed')
 
+    # Content structure preference (videos vs playlists)
+    CONTENT_STRUCTURE_CHOICES = ['mixed', 'videos_only', 'playlists_preferred']
+    content_structure = StringField(
+        choices=CONTENT_STRUCTURE_CHOICES,
+        default='mixed',
+        help_text="Preferred content structure: mixed (60/40), videos_only, or playlists_preferred"
+    )
+
     # Language preferences
     language_preference = ListField(StringField(max_length=20), default=['english', 'hindi'])
 
@@ -66,32 +74,211 @@ class RecommendationItem(EmbeddedDocument):
 
 
 class LearningPath(EmbeddedDocument):
-    """Structured learning path with multiple courses"""
+    """Structured learning path with multiple courses and modules"""
 
     path_id = StringField(max_length=100, required=True)
     title = StringField(max_length=200, required=True)
-    description = StringField(max_length=1000)
+    description = StringField(max_length=2000)
 
     # Learning path metadata
     estimated_duration_hours = IntField(min_value=1, default=40)
     difficulty_level = StringField(max_length=20, default='intermediate')
     skill_level_required = StringField(max_length=20, default='beginner')
 
-    # Path structure
-    course_sequence = ListField(DictField(), default=list)  # Ordered list of courses
+    # Path structure (new module-based structure)
+    modules = ListField(DictField(), default=list)  # Structured module data with lessons
+    course_sequence = ListField(DictField(), default=list)  # Legacy: Ordered list of courses
     milestones = ListField(DictField(), default=list)  # Achievement milestones
     prerequisites = ListField(StringField(max_length=100), default=list)
 
     # Path progress tracking
     completion_rate = FloatField(min_value=0.0, max_value=1.0, default=0.0)
+    progress_percentage = FloatField(min_value=0.0, max_value=100.0, default=0.0)  # Overall progress
     current_course_index = IntField(min_value=0, default=0)
     started_at = DateTimeField()
     completed_at = DateTimeField()
+    last_accessed = DateTimeField()  # Track user engagement
+
+    # Customization support
+    is_customized = BooleanField(default=False)  # Flag for user-customized paths
+    customizations = ListField(DictField(), default=list)  # History of user customizations
 
     # Path metadata
-    created_by = StringField(max_length=20, default='ai')  # ai, instructor, community
+    created_by = StringField(max_length=20, default='ai')  # ai, instructor, community, user
     popularity_score = FloatField(min_value=0.0, max_value=1.0, default=0.0)
     success_rate = FloatField(min_value=0.0, max_value=1.0, default=0.0)
+
+    def calculate_progress(self, user_profile: 'UserContentProfile') -> float:
+        """
+        Calculate overall progress percentage based on UserContentProfile data.
+
+        Args:
+            user_profile: UserContentProfile instance for the user
+
+        Returns:
+            Progress percentage (0.0 to 100.0)
+        """
+        if not self.modules or len(self.modules) == 0:
+            return 0.0
+
+        total_lessons = 0
+        completed_lessons = 0
+
+        # Count total and completed lessons across all modules
+        for module in self.modules:
+            module_id = module.get('module_id')
+            lessons = module.get('lessons', [])
+            total_lessons += len(lessons)
+
+            # Check completion status for each lesson
+            for lesson in lessons:
+                lesson_id = lesson.get('lesson_id')
+
+                # Check if lesson is in completed_courses or in_progress with 100%
+                for completed in user_profile.completed_courses:
+                    if completed.get('course_id') == lesson_id:
+                        completed_lessons += 1
+                        break
+                else:
+                    # Check in_progress_content for 100% completion
+                    for in_progress in user_profile.in_progress_content:
+                        if (in_progress.get('content_id') == lesson_id and
+                            in_progress.get('progress_percentage', 0.0) >= 100.0):
+                            completed_lessons += 1
+                            break
+
+        if total_lessons == 0:
+            return 0.0
+
+        progress = (completed_lessons / total_lessons) * 100.0
+        self.progress_percentage = progress
+        return progress
+
+    def get_next_lesson(self, user_profile: 'UserContentProfile') -> Optional[Dict[str, Any]]:
+        """
+        Get the next uncompleted lesson for the user to work on.
+
+        Args:
+            user_profile: UserContentProfile instance for the user
+
+        Returns:
+            Dictionary with next lesson details or None if all completed
+        """
+        if not self.modules:
+            return None
+
+        # Iterate through modules in order
+        for module in sorted(self.modules, key=lambda m: m.get('order', 0)):
+            module_id = module.get('module_id')
+            lessons = module.get('lessons', [])
+
+            # Check each lesson in the module
+            for lesson in lessons:
+                lesson_id = lesson.get('lesson_id')
+
+                # Check if lesson is completed
+                is_completed = False
+                for completed in user_profile.completed_courses:
+                    if completed.get('course_id') == lesson_id:
+                        is_completed = True
+                        break
+
+                if not is_completed:
+                    # Check if in progress with 100%
+                    for in_progress in user_profile.in_progress_content:
+                        if (in_progress.get('content_id') == lesson_id and
+                            in_progress.get('progress_percentage', 0.0) >= 100.0):
+                            is_completed = True
+                            break
+
+                # Return first uncompleted lesson
+                if not is_completed:
+                    return {
+                        'module_id': module_id,
+                        'module_title': module.get('title'),
+                        'lesson_id': lesson_id,
+                        'lesson_title': lesson.get('title'),
+                        'lesson_type': lesson.get('type'),
+                        'lesson_url': lesson.get('url'),
+                        'duration_minutes': lesson.get('duration_minutes'),
+                        'platform': lesson.get('platform')
+                    }
+
+        # All lessons completed
+        return None
+
+    def apply_customization(self, customization_type: str, target_id: str,
+                          customization_data: Dict[str, Any]) -> bool:
+        """
+        Apply user customization to the learning path structure.
+
+        Supports:
+        - skip_module: Skip an entire module
+        - adjust_pace: Adjust time estimates for a module
+        - swap_resource: Replace a lesson with alternative content
+
+        Args:
+            customization_type: Type of customization (skip_module, adjust_pace, swap_resource)
+            target_id: Module ID or Lesson ID being customized
+            customization_data: Additional data specific to customization type
+
+        Returns:
+            True if customization was applied, False otherwise
+        """
+        customization_record = {
+            'type': customization_type,
+            'target_id': target_id,
+            'data': customization_data,
+            'applied_at': datetime.utcnow()
+        }
+
+        if customization_type == 'skip_module':
+            # Mark module as skipped by removing it from active modules
+            for i, module in enumerate(self.modules):
+                if module.get('module_id') == target_id:
+                    # Add skip flag to module instead of removing (for audit trail)
+                    self.modules[i]['skipped'] = True
+                    self.customizations.append(customization_record)
+                    self.is_customized = True
+                    return True
+            return False
+
+        elif customization_type == 'adjust_pace':
+            # Adjust estimated hours based on pace multiplier
+            pace_multiplier = customization_data.get('pace_multiplier', 1.0)
+            for i, module in enumerate(self.modules):
+                if module.get('module_id') == target_id:
+                    original_hours = self.modules[i].get('estimated_hours', 10)
+                    self.modules[i]['estimated_hours'] = int(original_hours * pace_multiplier)
+                    self.customizations.append(customization_record)
+                    self.is_customized = True
+                    return True
+            return False
+
+        elif customization_type == 'swap_resource':
+            # Replace lesson URL and platform with new resource
+            new_url = customization_data.get('new_url')
+            new_platform = customization_data.get('new_platform')
+
+            if not new_url or not new_platform:
+                return False
+
+            # Find lesson across all modules
+            for i, module in enumerate(self.modules):
+                lessons = module.get('lessons', [])
+                for j, lesson in enumerate(lessons):
+                    if lesson.get('lesson_id') == target_id:
+                        # Update lesson with new resource
+                        self.modules[i]['lessons'][j]['url'] = new_url
+                        self.modules[i]['lessons'][j]['platform'] = new_platform
+                        self.modules[i]['lessons'][j]['customized'] = True
+                        self.customizations.append(customization_record)
+                        self.is_customized = True
+                        return True
+            return False
+
+        # Unknown customization type
+        return False
 
 
 class CourseRecommendation(Document):

@@ -121,7 +121,9 @@ export const apiSlice = createApi({
     'ContentPreferences',
     'OnboardingStatus',
     'Analytics',
-    'Recommendations'
+    'Recommendations',
+    'LearningPaths',
+    'MyLearningPaths'
   ],
   endpoints: (builder) => ({}), // Endpoints will be injected by other API files
 });

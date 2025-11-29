@@ -1,0 +1,31 @@
+# Gradvy ML GPU Add-ons (NVIDIA GPU Required)
+# Install AFTER requirements-ml-base.txt
+#
+# Prerequisites:
+#   - NVIDIA GPU with 8GB+ VRAM
+#   - CUDA 11.8 or 12.1 installed
+#   - pip install -r requirements-ml-base.txt (must run first)
+#
+# Usage:
+#   1. pip install -r requirements-ml-base.txt
+#   2. pip install -r requirements-ml-gpu.txt
+#
+# Or use the automated script: ./scripts/ml-install-gpu.sh
+
+# Upgrade to GPU-accelerated PyTorch (CUDA 11.8)
+# This replaces the CPU version from requirements-ml-base.txt
+--index-url https://download.pytorch.org/whl/cu118
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# GPU-only quantization library (4-bit/8-bit model compression)
+# Reduces memory usage by 4-8x for large models
+bitsandbytes>=0.39.0
+
+# Verify installation with:
+#   python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+#   python -c "import bitsandbytes; print('bitsandbytes OK')"
+
+# Note: For CUDA 12.1, change index-url to:
+#   --index-url https://download.pytorch.org/whl/cu121

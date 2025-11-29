@@ -4,11 +4,11 @@ import React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useSelector } from "react-redux"
-import { 
-  Home, 
-  User, 
-  Settings, 
-  Shield, 
+import {
+  Home,
+  User,
+  Settings,
+  Shield,
   Brain,
   BarChart3,
   BookOpen,
@@ -20,7 +20,8 @@ import {
   Target,
   Award,
   FolderOpen,
-  GraduationCap
+  GraduationCap,
+  Route
 } from "lucide-react"
 import { selectCurrentUser } from "@/store/slices/authSlice"
 import * as Collapsible from "@radix-ui/react-collapsible"
@@ -79,6 +80,12 @@ export function AppSidebar({ ...props }) {
   ]
 
   const learnItems = [
+    {
+      name: "Learning Paths",
+      href: "/app/learning-paths",
+      icon: Route,
+      description: "AI-powered personalized learning journeys"
+    },
     {
       name: "Learning",
       href: "/app/learning",

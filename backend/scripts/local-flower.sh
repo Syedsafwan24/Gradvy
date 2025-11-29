@@ -89,5 +89,8 @@ echo ""
 echo "⏹️  Press Ctrl+C to stop Flower"
 echo ""
 
-# Start Flower with authentication
-celery -A core flower --port=5555 --broker=redis://localhost:6380/0 --basic_auth=admin:flower_admin_2024
+# Start Flower with authentication and explicit Redis broker configuration
+# Export environment variables for consistency with worker/beat scripts
+CELERY_BROKER_URL=redis://localhost:6380/0 \
+CELERY_RESULT_BACKEND=redis://localhost:6380/0 \
+celery -A core flower --port=5555 --basic_auth=admin:flower_admin_2024

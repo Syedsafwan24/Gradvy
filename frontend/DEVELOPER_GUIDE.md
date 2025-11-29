@@ -374,9 +374,11 @@ const MyComponent = () => {
 ### Environment Variables
 Create `.env.local` for local development:
 ```env
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=http://localhost:8080
 NODE_ENV=development
 ```
+
+**Note**: Backend port changed from 8000 to 8080. Environment variable renamed from `NEXT_PUBLIC_API_BASE_URL` to `NEXT_PUBLIC_API_URL` for consistency.
 
 ### Production Build
 ```bash

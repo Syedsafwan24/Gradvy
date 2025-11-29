@@ -244,9 +244,9 @@ else
 fi
 echo ""
 echo "🌐 Access Points:"
-echo "   • Django: http://localhost:8000/"
-echo "   • Admin: http://localhost:8000/admin/"
-echo "   • API Preferences: http://localhost:8000/api/preferences/"
+echo "   • Django: http://localhost:8030/"
+echo "   • Admin: http://localhost:8030/admin/"
+echo "   • API Preferences: http://localhost:8030/api/preferences/"
 echo ""
 if [ "$celery_worker_running" = true ] || [ "$celery_beat_running" = true ]; then
     echo "📋 Celery Logs:"
@@ -266,4 +266,4 @@ fi
 echo ""
 
 # Start Django development server
-python manage.py runserver
+python manage.py runserver 8030

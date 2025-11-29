@@ -1,8 +1,9 @@
 import axios from 'axios';
 import { getCSRFToken } from './cookieUtils';
+import { API_URL } from '../config/env';
 
-const API_BASE_URL =
-	process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+// Use validated environment variable from centralized config
+const API_BASE_URL = `${API_URL}/api`;  // Changed from process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
 
 const api = axios.create({
 	baseURL: API_BASE_URL,

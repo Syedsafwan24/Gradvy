@@ -22,6 +22,8 @@ urlpatterns = [
     
     # Personalized recommendations
     path('recommendations/', views.PersonalizedRecommendationsView.as_view(), name='recommendations'),
+    path('recommendations/generate/', views.GenerateRecommendationsView.as_view(), name='generate_recommendations'),
+    path('recommendations/feedback/', views.RecommendationFeedbackView.as_view(), name='recommendation_feedback'),
     
     # Utility endpoints
     path('choices/', views.PreferenceChoicesView.as_view(), name='preference_choices'),

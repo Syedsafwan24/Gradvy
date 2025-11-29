@@ -49,8 +49,8 @@ cd Gradvy/backend
 
 🎉 **Access your application:**
 
-- **Django Admin**: http://localhost:8000/admin/
-- **Main API**: http://localhost:8000/api/
+- **Django Admin**: http://localhost:8080/admin/
+- **Main API**: http://localhost:8080/api/
 - **Flower Monitoring**: http://localhost:5555/ (when running Celery)
 
 ## 🏗️ Hybrid Architecture Overview
@@ -366,8 +366,8 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 **Port Already in Use:**
 
 ```powershell
-# Find process using port 8000
-netstat -ano | findstr :8000
+# Find process using port 8080
+netstat -ano | findstr :8080
 # Kill process (replace PID)
 taskkill /F /PID <PID>
 ```
@@ -444,9 +444,9 @@ pyenv global 3.13.0
 
 ```bash
 # Find process using port
-lsof -ti:8000
+lsof -ti:8080
 # Kill process
-kill -9 $(lsof -ti:8000)
+kill -9 $(lsof -ti:8080)
 ```
 
 ---
@@ -546,7 +546,7 @@ newgrp docker
 
 ```bash
 # Find process
-sudo lsof -i :8000
+sudo lsof -i :8080
 # Kill process
 sudo kill -9 <PID>
 ```
@@ -585,8 +585,8 @@ docker-compose exec gradvy-django python manage.py migrate
 docker-compose exec gradvy-django python manage.py createsuperuser
 
 # 5. Access application
-# Django: http://localhost:8000
-# Admin: http://localhost:8000/admin/
+# Django: http://localhost:8080
+# Admin: http://localhost:8080/admin/
 ```
 
 ---
@@ -642,7 +642,7 @@ FLOWER_PASSWORD=flower_admin_2024
 | Issue             | Windows                         | macOS           | Linux                               |
 | ----------------- | ------------------------------- | --------------- | ----------------------------------- |
 | Permission Denied | Run as Administrator            | Use `sudo`      | Use `sudo`                          |
-| Port in Use       | `netstat -ano \| findstr :8000` | `lsof -ti:8000` | `sudo netstat -tulnp \| grep :8000` |
+| Port in Use       | `netstat -ano \| findstr :8080` | `lsof -ti:8080` | `sudo netstat -tulnp \| grep :8080` |
 | Docker not found  | Restart Docker Desktop          | Open Docker.app | `sudo systemctl start docker`       |
 | Python not found  | Add to PATH                     | Use `python3`   | Install python3-dev                 |
 
@@ -691,7 +691,7 @@ python core/manage.py check
 python core/manage.py test
 
 # Test API endpoints
-curl -X GET http://localhost:8000/api/auth/profile/ \
+curl -X GET http://localhost:8080/api/auth/profile/ \
   -H "Authorization: Bearer <your-token>"
 ```
 
@@ -713,8 +713,8 @@ python core/manage.py dbshell
 
 ## 📚 Next Steps
 
-1. **API Documentation**: Visit http://localhost:8000/api/docs/ (when available)
-2. **Admin Panel**: http://localhost:8000/admin/
+1. **API Documentation**: Visit http://localhost:8080/api/docs/ (when available)
+2. **Admin Panel**: http://localhost:8080/admin/
 3. **MFA Setup**: Configure TOTP devices and backup codes
 4. **Production Deployment**: See production configuration above
 

@@ -36,11 +36,6 @@ print_info() {
 # Navigate to backend directory
 cd "$(dirname "$0")/.."
 
-# Load environment variables
-if [ -f ".env" ]; then
-    source .env
-fi
-
 # MongoDB connection details
 MONGO_HOST=${MONGO_HOST:-localhost}
 MONGO_PORT=${MONGO_PORT:-27017}
@@ -80,7 +75,7 @@ echo ""
 print_header "Django Models Validation"
 
 cd core
-source ../venv/scripts/activate
+source ../venv/bin/activate
 
 # Test Django setup
 if ! python manage.py check --database default >/dev/null 2>&1; then

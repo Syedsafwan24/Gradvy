@@ -103,12 +103,40 @@ pip install -r requirements.txt
 pip list
 ```
 
+### ML Operations (Optional)
+
+```bash
+# Install ML dependencies (auto-detect)
+./scripts/ml-install.sh
+
+# Install ML dependencies (CPU-only)
+pip install -r requirements-ml-base.txt
+
+# Install ML dependencies (GPU)
+./scripts/ml-install-gpu.sh
+
+# Verify ML setup
+python test_ml_setup.py
+
+# Check model registry
+python manage.py shell
+>>> from ml_services.utils.model_registry import get_global_registry
+>>> registry = get_global_registry()
+>>> print(registry.get_all_model_status())
+
+# Clear model cache
+rm -rf core/ML_Models/cache/*
+
+# View model storage
+du -sh core/ML_Models/
+```
+
 ## 🌐 Service URLs
 
 | Service      | URL                         | Purpose             |
 | ------------ | --------------------------- | ------------------- |
-| Django API   | http://localhost:8000       | Main application    |
-| Django Admin | http://localhost:8000/admin | Admin interface     |
+| Django API   | http://localhost:8080       | Main application    |
+| Django Admin | http://localhost:8080/admin | Admin interface     |
 | Flower       | http://localhost:5555       | Celery task monitor |
 | PostgreSQL   | localhost:5432              | Database            |
 | Redis        | localhost:6379              | Cache & task queue  |
@@ -123,8 +151,12 @@ pip list
 | `core/apps/accounts/views.py`  | API endpoints         |
 | `core/apps/accounts/tasks.py`  | Background tasks      |
 | `requirements.txt`             | Python dependencies   |
+| `requirements-ml-base.txt`     | ML dependencies (CPU) |
+| `requirements-ml-gpu.txt`      | ML dependencies (GPU) |
 | `docker-compose.yml`           | Docker services       |
 | `core/.env`                    | Environment variables |
+| `ml_services/`                 | ML models & services  |
+| `docs/ML_SETUP.md`             | ML installation guide |
 
 ## 🐛 Debugging
 
@@ -151,7 +183,7 @@ python manage.py runserver --verbosity=2
 | `ModuleNotFoundError`        | Activate venv: `source venv/scripts/activate`         |
 | `Database connection failed` | Check PostgreSQL is running & credentials in `.env`   |
 | `Redis connection failed`    | Run `docker-compose up -d`                            |
-| `Port 8000 in use`           | Use different port: `python manage.py runserver 8001` |
+| `Port 8080 in use`           | Use different port: `python manage.py runserver 8081` |
 | `Permission denied`          | Run as admin or `chmod +x script.sh`                  |
 
 ## 🔄 Git Workflow

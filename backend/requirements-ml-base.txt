@@ -1,0 +1,34 @@
+# Gradvy ML Base Dependencies (CPU-compatible)
+# Works on both CPU and GPU machines
+# Install: pip install -r requirements-ml-base.txt
+#
+# System Requirements:
+#   - 8GB+ RAM
+#   - 20GB+ disk space
+#   - Works on CPU-only systems
+#
+# For GPU acceleration: pip install -r requirements-ml-gpu.txt
+
+# Core ML Framework - CPU version (smaller, faster download)
+# Using PyTorch official CDN for better reliability
+--index-url https://download.pytorch.org/whl/cpu
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# HuggingFace Ecosystem for Local Models
+transformers>=4.30.0
+sentence-transformers>=2.2.2
+huggingface_hub>=0.15.1
+tokenizers>=0.13.3
+accelerate>=0.20.0
+
+# Model Optimization (CPU-compatible parts)
+optimum>=1.8.0
+
+# Progress bars
+tqdm>=4.65.0
+
+# Note: bitsandbytes (quantization) is GPU-only and in requirements-ml-gpu.txt
+# CPU users: Models will run in float16 without quantization
+# GPU users: Install requirements-ml-gpu.txt for 4-bit/8-bit quantization
