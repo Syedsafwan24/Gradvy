@@ -161,6 +161,81 @@ export const learningPathsApi = apiSlice.injectEndpoints({
       ],
       transformResponse: (response) => response.data,
     }),
+
+    // ========================================================================
+    // Quiz Endpoints
+    // ========================================================================
+
+    /**
+     * Get or create quiz for a lesson
+     * GET /api/learning-paths/quizzes/{pathId}/{lessonId}/
+     */
+    getQuiz: builder.query({
+      query: ({ pathId, lessonId }) => `learning-paths/quizzes/${pathId}/${lessonId}/`,
+      providesTags: (result, error, { pathId, lessonId }) => [
+        { type: 'Quiz', id: `${pathId}-${lessonId}` },
+      ],
+      transformResponse: (response) => response.data,
+    }),
+
+    /**
+     * Start a quiz attempt
+     * POST /api/learning-paths/quizzes/{quizId}/start/
+     */
+    startQuizAttempt: builder.mutation({
+      query: (quizId) => ({
+        url: `learning-paths/quizzes/${quizId}/start/`,
+        method: 'POST',
+      }),
+      invalidatesTags: (result, error, quizId) => [
+        { type: 'QuizAttempts', id: quizId },
+      ],
+      transformResponse: (response) => response.data,
+    }),
+
+    /**
+     * Submit quiz answers
+     * POST /api/learning-paths/quizzes/attempts/{attemptId}/submit/
+     */
+    submitQuiz: builder.mutation({
+      query: ({ attemptId, answers }) => ({
+        url: `learning-paths/quizzes/attempts/${attemptId}/submit/`,
+        method: 'POST',
+        body: {
+          attempt_id: attemptId,
+          answers,
+        },
+      }),
+      invalidatesTags: (result, error, { attemptId }) => [
+        { type: 'QuizAttempt', id: attemptId },
+        'LearningPaths', // Invalidate paths to refresh lock states
+      ],
+      transformResponse: (response) => response.data,
+    }),
+
+    /**
+     * Get quiz attempt results
+     * GET /api/learning-paths/quizzes/attempts/{attemptId}/
+     */
+    getQuizAttempt: builder.query({
+      query: (attemptId) => `learning-paths/quizzes/attempts/${attemptId}/`,
+      providesTags: (result, error, attemptId) => [
+        { type: 'QuizAttempt', id: attemptId },
+      ],
+      transformResponse: (response) => response.data,
+    }),
+
+    /**
+     * Get all quiz attempts for a lesson
+     * GET /api/learning-paths/quizzes/{pathId}/{lessonId}/attempts/
+     */
+    getQuizAttempts: builder.query({
+      query: ({ pathId, lessonId }) => `learning-paths/quizzes/${pathId}/${lessonId}/attempts/`,
+      providesTags: (result, error, { pathId, lessonId }) => [
+        { type: 'QuizAttempts', id: `${pathId}-${lessonId}` },
+      ],
+      transformResponse: (response) => response.data,
+    }),
   }),
 });
 
@@ -174,10 +249,19 @@ export const {
   useUpdateProgressMutation,
   useCustomizeLearningPathMutation,
   useGetProgressAnalyticsQuery,
+  // Quiz hooks
+  useGetQuizQuery,
+  useStartQuizAttemptMutation,
+  useSubmitQuizMutation,
+  useGetQuizAttemptQuery,
+  useGetQuizAttemptsQuery,
   // Lazy query hooks
   useLazyGetLearningPathsQuery,
   useLazyGetLearningPathDetailQuery,
   useLazyGetProgressAnalyticsQuery,
+  useLazyGetQuizQuery,
+  useLazyGetQuizAttemptQuery,
+  useLazyGetQuizAttemptsQuery,
 } = learningPathsApi;
 
 // Export the API slice for store configuration
